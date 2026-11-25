@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Seen · Test booth</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap">
+<style>
+:root{--bg:#0A0A0E;--tile:#131319;--line:#26262F;--fg:#F2F2F6;--muted:#8C8C9C;--seen:#B44BFF;color-scheme:dark}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);font-family:"Manrope",system-ui,sans-serif}
+main{max-width:860px;margin:0 auto;padding:40px 20px;display:grid;gap:22px}
+h1{margin:0;font-size:32px;letter-spacing:-.02em} h1 b{color:var(--seen)} p{margin:0;color:var(--muted);line-height:1.55;max-width:62ch}
+label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;display:flex;gap:10px;align-items:center}
+input{font:inherit;font-size:15px;background:var(--tile);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px 12px;width:200px;text-transform:none;letter-spacing:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+a.card{display:flex;flex-direction:column;gap:4px;padding:16px;border-radius:14px;background:var(--tile);border:1px solid var(--line);color:var(--fg);text-decoration:none}
+a.card:hover{border-color:var(--seen)} a.card b{font-size:16px} a.card span{font-size:13px;color:var(--muted)} a.main{border-color:var(--seen)}
+</style></head><body><main>
+<h1>Seen · <b>test booth</b></h1>
+<p>One scenario, five screens. Open the wizard console on the facilitator's laptop and each screen on its own device, using the same room name. Every screen follows the console.</p>
+<label for="room">Room <input id="room" value="booth" autocomplete="off"></label>
+<div class="grid" id="grid"></div>
+</main>
+<script>
+const items=[['control.html','Wizard console','Facilitator laptop: run scenarios, force levels, preview every screen.',true],['windscreen.html','Windscreen','Big monitor in front of the driver.'],['dashboard.html','Dashboard','Monitor under the windscreen. Plays the sounds.'],['dashboard.html?crop=tight','Dashboard · iPad','Tighter crop for a 4:3 iPad.'],['mirror.html?side=L','Left mirror','iPad in the left mirror housing.'],['mirror.html?side=R','Right mirror','iPad in the right mirror housing.']];
+function draw(){ const r=encodeURIComponent(document.getElementById('room').value.trim()||'booth'); document.getElementById('grid').innerHTML=items.map(([u,n,d,m])=>`<a class="card ${m?'main':''}" href="${u}${u.includes('?')?'&':'?'}room=${r}"><b>${n}</b><span>${d}</span></a>`).join(''); }
+document.getElementById('room').oninput=draw; draw();
+</script></body></html>

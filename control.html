@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Seen · Wizard console</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap">
+<style>
+/* Wizard console: controls on the left, live previews laid out like the booth on the right. */
+:root{ --bg:#0A0A0E; --tile:#131319; --tile2:#1B1B23; --line:#26262F; --line2:#34343F; --fg:#F2F2F6; --muted:#8C8C9C; --seen:#B44BFF; --seen-soft:#2A1840; --ok:#4FD18B; --warn:#FFB547;
+  --sans:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif; color-scheme:dark }
+*{box-sizing:border-box} [hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:10px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+h1{margin:0;font-size:18px;letter-spacing:-.02em} h1 b{color:var(--seen)}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;border-radius:999px;background:var(--tile2);border:1px solid var(--line2);color:var(--muted)}
+.chip i{width:8px;height:8px;border-radius:50%;background:#555} .chip.on{color:var(--fg)} .chip.on i{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+.chip.warn{color:var(--warn)}
+.sp{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+main{display:grid;grid-template-columns:360px minmax(0,1fr);gap:14px;padding:14px 16px}
+@media (max-width:1000px){ main{grid-template-columns:1fr} }
+.col{display:flex;flex-direction:column;gap:12px;min-width:0}
+.card{background:var(--tile);border:1px solid var(--line);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.lab{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700}
+.row{display:flex;flex-wrap:wrap;gap:6px}
+button{font:inherit;font-size:12.5px;font-weight:600;color:var(--fg);background:var(--tile2);border:1px solid var(--line2);border-radius:10px;padding:7px 11px;cursor:pointer}
+button:hover{border-color:#4a4a58} button:focus-visible{outline:2px solid var(--seen);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--seen);border-color:var(--seen);color:#fff}
+button.big{font-size:15px;padding:11px 18px;border-radius:12px} button.primary{background:var(--seen);border-color:var(--seen)}
+.clock{display:flex;align-items:baseline;gap:10px} .clock b{font-size:34px;font-variant-numeric:tabular-nums;letter-spacing:-.02em} .clock span{color:var(--muted)}
+.lv{display:grid;grid-template-columns:repeat(3,1fr);gap:6px} .lv button{padding:9px 6px} .lv button small{display:block;font-weight:500;opacity:.75;font-size:10.5px}
+.lv button.l4[aria-pressed="true"]{background:#E5322D;border-color:#E5322D}
+.state{font-size:13px;line-height:1.45;color:#D8D8E2} .state b{color:var(--fg)}
+input[type=range]{accent-color:var(--seen);width:100%}
+.prev{display:grid;grid-template-columns:1fr 2.6fr 1fr;gap:10px;align-items:stretch}
+.pv{position:relative;background:#000;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.pv canvas{display:block;width:100%;height:100%}
+.pv span{position:absolute;left:8px;top:6px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:#fff;background:rgba(0,0,0,.55);padding:2px 7px;border-radius:6px}
+.pv.ws{aspect-ratio:21/8} .pv.mi{aspect-ratio:330/290} .pv.da{aspect-ratio:1790/360;align-self:center}
+.lower{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:12px}
+@media (max-width:1300px){ .lower{grid-template-columns:1fr} }
+.pv.top{aspect-ratio:16/10}
+table{width:100%;border-collapse:collapse;font-size:12.5px} td,th{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left} th{color:var(--muted);font-weight:600;font-size:11px}
+.lvl{padding:1px 7px;border-radius:999px;border:1px solid var(--line2);font-size:11px} .lvl.l1{border-color:#7A4FA8} .lvl.l2{background:#3A2257} .lvl.l3{background:var(--seen)} .lvl.l4{background:#E5322D}
+ol#log{margin:0;padding-left:0;list-style:none;font-size:12px;color:#C9C9D4;max-height:180px;overflow:auto;display:flex;flex-direction:column;gap:3px}
+.links{display:grid;grid-template-columns:auto 1fr auto auto;gap:6px 8px;align-items:center;font-size:12px}
+.links code{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.links button{padding:4px 8px;font-size:11.5px}
+kbd{font:inherit;font-size:11px;padding:1px 5px;border:1px solid var(--line2);border-radius:5px;color:var(--muted)}
+.hint{font-size:11.5px;color:var(--muted);line-height:1.5}
+</style></head>
+<body>
+<header>
+  <h1>Seen <b>Wizard</b></h1>
+  <span class="chip" id="conn">connecting…</span>
+  <span class="chip">room <b id="roomName" style="margin-left:4px">booth</b></span>
+  <div class="sp" id="devs"></div>
+</header>
+<main>
+  <div class="col">
+    <section class="card">
+      <span class="lab">Run</span>
+      <div class="clock"><b id="clock">0.0 s</b><span id="runState">Ready</span></div>
+      <div class="row"><button class="big primary" id="play">Start</button><button class="big" id="restart">Restart</button></div>
+      <div class="hint"><kbd>Space</kbd> start / pause · <kbd>R</kbd> restart · <kbd>0</kbd>–<kbd>4</kbd> force a level · <kbd>A</kbd> back to automatic</div>
+    </section>
+    <section class="card">
+      <span class="lab">Scenario</span>
+      <div class="lab" style="font-size:10px;margin-top:2px">Cyclist</div>
+      <div class="row"><button data-preset="alongside">Alongside</button><button data-preset="turnNo">Left turn · no reaction</button><button data-preset="turnYes">Left turn · driver slows</button></div>
+      <div class="lab" style="font-size:10px">Pedestrian</div>
+      <div class="row"><button data-preset="pedOut">Steps out</button><button data-preset="pedYield">Waiting · car yields</button></div>
+      <div class="lab" style="font-size:10px">Several road users</div>
+      <div class="row"><button data-preset="both">Cyclist + pedestrian</button><button data-preset="carBike">Car right · cyclist left</button></div>
+      <div class="lab" style="font-size:10px">Explore</div>
+      <div class="row"><button data-preset="explore">Level explorer (static)</button></div>
+    </section>
+    <section class="card">
+      <span class="lab">Seen level · wizard</span>
+      <div class="lv">
+        <button data-lv="-1" aria-pressed="true">Auto<small>system decides</small></button>
+        <button data-lv="0">0<small>Baseline</small></button>
+        <button data-lv="1">1<small>Aware</small></button>
+        <button data-lv="2">2<small>Caution</small></button>
+        <button data-lv="3">3<small>Urgent</small></button>
+        <button data-lv="4" class="l4">!<small>Failsafe</small></button>
+      </div>
+      <p class="state" id="stateDesc">—</p>
+    </section>
+    <section class="card">
+      <span class="lab">Conditions</span>
+      <div class="row"><button data-env="day">Day</button><button data-env="night">Night</button><button data-env="rain">Rain</button></div>
+      <span class="lab">Mirror cue</span>
+      <div class="row"><button data-enc="seen">Seen · extent + motion</button><button data-enc="extent">A · Extent</button><button data-enc="motion">B · Motion</button><button data-enc="icon">C · Icon</button></div>
+      <span class="lab">Sound on the dashboard screen</span>
+      <div class="row"><button id="sndIn">Inside chime</button><button id="sndOut">Outside sound</button></div>
+      <span class="lab">Windscreen field of view · <span id="fovV">90°</span></span>
+      <input type="range" id="fov" min="60" max="120" value="90" aria-label="Windscreen field of view">
+    </section>
+    <section class="card">
+      <span class="lab">Screen links</span>
+      <div class="links" id="links"></div>
+      <p class="hint">Open each link on its device, tap the screen, done. Every screen in this room follows this console.</p>
+    </section>
+  </div>
+  <div class="col">
+    <div class="pv ws"><canvas id="pvWs"></canvas><span>Monitor · windscreen</span></div>
+    <div class="prev">
+      <div class="pv mi"><canvas id="pvL"></canvas><span>iPad · mirror L</span></div>
+      <div class="pv da"><canvas id="pvD"></canvas><span>Dashboard</span></div>
+      <div class="pv mi"><canvas id="pvR"></canvas><span>iPad · mirror R</span></div>
+    </div>
+    <div class="lower">
+      <div class="pv top"><canvas id="top"></canvas><span>Top view · wizard only</span></div>
+      <section class="card">
+        <span class="lab">Seen logic</span>
+        <table><thead><tr><th>User</th><th>Where</th><th>In path</th><th>Reacting</th><th>Level</th></tr></thead><tbody id="logic"></tbody></table>
+        <span class="lab">Log</span>
+        <ol id="log"></ol>
+      </section>
+    </div>
+  </div>
+</main>
+<script src="js/config.js"></script><script src="js/three-min.js"></script><script src="js/street3d.js"></script><script src="js/core.js"></script><script src="js/sync.js"></script><script src="js/views.js"></script>
+<script src="js/control.js"></script>
+</body></html>
