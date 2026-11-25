@@ -1,0 +1,9 @@
+:root{ --seen:#B44BFF; --fg:#F2F2F6; --muted:#8C8C9C; --bg:#000; color-scheme:dark; --sans:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif }
+*{box-sizing:border-box} [hidden]{display:none!important}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:var(--sans);overflow:hidden}
+canvas.screen{position:fixed;inset:0;width:100vw;height:100vh;display:block}
+#badge{position:fixed;left:12px;bottom:12px;font-size:12px;padding:6px 10px;border-radius:999px;background:rgba(20,20,26,.75);color:var(--muted);transition:opacity .6s}
+#badge[data-mode="offline"]{color:#FFB547} #badge.fade{opacity:0}
+#tap{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(0,0,0,.82);border:0;color:var(--fg);font:inherit;cursor:pointer;text-align:center;padding:24px}
+#tap b{font-size:28px;letter-spacing:-.02em} #tap span{color:var(--muted);max-width:44ch;line-height:1.5}
+#tap i{width:64px;height:64px;border-radius:50%;border:3px solid var(--seen);box-shadow:0 0 24px var(--seen)}
