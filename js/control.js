@@ -9,7 +9,7 @@ function publish(){ Sync.publish(CS); }
 Sync.connect(room).then(() => { $('roomName').textContent = Sync.room; Sync.presence('control'); buildLinks(); setTimeout(() => { if (!Sync.state) publish(); }, 1500); });
 Sync.onState(st => { if (st) { CS = Object.assign({}, SESSION_DEFAULT, st); if (!Array.isArray(CS.overrides)) CS.overrides = CS.overrides ? Object.values(CS.overrides) : []; } applySession(CS); refreshUI(); });
 Sync.onStatus(m => { const c = $('conn'); c.textContent = m === 'online' ? 'Synced online (Firebase)' : m === 'local' ? 'This computer only · add Firebase to sync devices' : m === 'offline' ? 'Offline · reconnecting' : 'Connecting…'; c.className = 'chip' + (m === 'online' ? ' on' : m === 'connecting' ? '' : ' warn'); });
-const ROLES = [['windscreen', 'Windscreen'], ['dashboard', 'Dashboard'], ['mirror-L', 'Mirror L'], ['mirror-R', 'Mirror R']];
+const ROLES = [['windscreen', 'Windscreen'], ['dashboard', 'Cluster'], ['mirror-L', 'Mirror L'], ['mirror-R', 'Mirror R']];
 Sync.onDevices(d => { const have = new Set(Object.values(d || {}).map(x => x.role)); $('devs').innerHTML = ROLES.map(([k, l]) => `<span class="chip ${have.has(k) ? 'on' : ''}"><i></i>${l}</span>`).join(''); });
 
 // ---------- actions ----------
@@ -47,7 +47,7 @@ function refreshUI(){
 function buildLinks(){
   const base = location.href.replace(/control\.html.*$/, '').replace(/\?.*$/, '');
   const r = encodeURIComponent(Sync.room);
-  const L = [['Windscreen · monitor', `windscreen.html?room=${r}`], ['Dashboard · monitor', `dashboard.html?room=${r}`], ['Dashboard · iPad', `dashboard.html?room=${r}&crop=tight`], ['Mirror left · iPad', `mirror.html?room=${r}&side=L`], ['Mirror right · iPad', `mirror.html?room=${r}&side=R`]];
+  const L = [['Windscreen · monitor', `windscreen.html?room=${r}`], ['Instrument cluster', `dashboard.html?room=${r}`], ['Mirror left · iPad', `mirror.html?room=${r}&side=L`], ['Mirror right · iPad', `mirror.html?room=${r}&side=R`]];
   $('links').innerHTML = L.map(([n, u], i) => `<b>${n}</b><code>${base}${u}</code><button data-copy="${i}">Copy</button><button data-open="${i}">Open</button>`).join('');
   $('links').querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => { const u = base + L[+b.dataset.copy][1]; try { await navigator.clipboard.writeText(u); b.textContent = 'Copied'; } catch (_) { b.textContent = 'Select it'; } setTimeout(() => b.textContent = 'Copy', 1400); });
   $('links').querySelectorAll('[data-open]').forEach(b => b.onclick = () => window.open(base + L[+b.dataset.open][1], '_blank'));
@@ -69,7 +69,7 @@ function frame(now){
   opts.sndIn = false; opts.sndOut = false;
   advanceSim();
   drawWindscreen($('pvWs'), 900);
-  drawMirrorScreen($('pvL'), 'L', 320); drawDashboard($('pvD'), 'wide'); drawMirrorScreen($('pvR'), 'R', 320);
+  drawMirrorScreen($('pvL'), 'L', 320); drawClusterScreen($('pvD')); drawMirrorScreen($('pvR'), 'R', 320);
   drawTop();
   $('clock').textContent = S.t.toFixed(1) + ' s';
   if (now - lastUi > 200) { lastUi = now; const st = conceptState(); const ov = currentOverride();

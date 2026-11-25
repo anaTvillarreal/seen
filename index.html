@@ -19,7 +19,7 @@ a.card:hover{border-color:var(--seen)} a.card b{font-size:16px} a.card span{font
 <div class="grid" id="grid"></div>
 </main>
 <script>
-const items=[['control.html','Wizard console','Facilitator laptop: run scenarios, force levels, preview every screen.',true],['windscreen.html','Windscreen','Big monitor in front of the driver.'],['dashboard.html','Dashboard','Monitor under the windscreen. Plays the sounds.'],['dashboard.html?crop=tight','Dashboard · iPad','Tighter crop for a 4:3 iPad.'],['mirror.html?side=L','Left mirror','iPad in the left mirror housing.'],['mirror.html?side=R','Right mirror','iPad in the right mirror housing.']];
+const items=[['control.html','Wizard console','Facilitator laptop: run scenarios, force levels, preview every screen.',true],['windscreen.html','Windscreen','Big monitor in front of the driver.'],['dashboard.html','Instrument cluster','The Seen instrument panel, full screen. Plays the sounds.'],['mirror.html?side=L','Left mirror','iPad in the left mirror housing.'],['mirror.html?side=R','Right mirror','iPad in the right mirror housing.']];
 function draw(){ const r=encodeURIComponent(document.getElementById('room').value.trim()||'booth'); document.getElementById('grid').innerHTML=items.map(([u,n,d,m])=>`<a class="card ${m?'main':''}" href="${u}${u.includes('?')?'&':'?'}room=${r}"><b>${n}</b><span>${d}</span></a>`).join(''); }
 document.getElementById('room').oninput=draw; draw();
 </script></body></html>

@@ -33,7 +33,7 @@ input[type=range]{accent-color:var(--seen);width:100%}
 .pv{position:relative;background:#000;border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .pv canvas{display:block;width:100%;height:100%}
 .pv span{position:absolute;left:8px;top:6px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:#fff;background:rgba(0,0,0,.55);padding:2px 7px;border-radius:6px}
-.pv.ws{aspect-ratio:21/8} .pv.mi{aspect-ratio:330/290} .pv.da{aspect-ratio:1790/360;align-self:center}
+.pv.ws{aspect-ratio:21/8} .pv.mi{aspect-ratio:330/290} .pv.da{aspect-ratio:2576/1080;align-self:center}
 .lower{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:12px}
 @media (max-width:1300px){ .lower{grid-template-columns:1fr} }
 .pv.top{aspect-ratio:16/10}
@@ -89,7 +89,7 @@ kbd{font:inherit;font-size:11px;padding:1px 5px;border:1px solid var(--line2);bo
       <div class="row"><button data-env="day">Day</button><button data-env="night">Night</button><button data-env="rain">Rain</button></div>
       <span class="lab">Mirror cue</span>
       <div class="row"><button data-enc="seen">Seen · extent + motion</button><button data-enc="extent">A · Extent</button><button data-enc="motion">B · Motion</button><button data-enc="icon">C · Icon</button></div>
-      <span class="lab">Sound on the dashboard screen</span>
+      <span class="lab">Sound on the cluster screen</span>
       <div class="row"><button id="sndIn">Inside chime</button><button id="sndOut">Outside sound</button></div>
       <span class="lab">Windscreen field of view · <span id="fovV">90°</span></span>
       <input type="range" id="fov" min="60" max="120" value="90" aria-label="Windscreen field of view">
@@ -104,7 +104,7 @@ kbd{font:inherit;font-size:11px;padding:1px 5px;border:1px solid var(--line2);bo
     <div class="pv ws"><canvas id="pvWs"></canvas><span>Monitor · windscreen</span></div>
     <div class="prev">
       <div class="pv mi"><canvas id="pvL"></canvas><span>iPad · mirror L</span></div>
-      <div class="pv da"><canvas id="pvD"></canvas><span>Dashboard</span></div>
+      <div class="pv da"><canvas id="pvD"></canvas><span>Instrument cluster</span></div>
       <div class="pv mi"><canvas id="pvR"></canvas><span>iPad · mirror R</span></div>
     </div>
     <div class="lower">

@@ -6,7 +6,7 @@ Five pages that run the same Seen scenario at the same moment:
 |---|---|---|
 | `control.html` | Facilitator laptop | Wizard console: pick a scenario, start/pause, force a Seen level, conditions, live previews of every screen |
 | `windscreen.html` | Big monitor | The street ahead (3D) |
-| `dashboard.html` | Monitor under the windscreen (`?crop=tight` for an iPad) | Instrument panel + centre screen. Plays the Seen sounds |
+| `dashboard.html` | Monitor or iPad under the windscreen | The Seen instrument cluster, full screen. Plays the Seen sounds |
 | `mirror.html?side=L` / `?side=R` | iPads in the mirror housings | Live side mirror with the Seen cue |
 | `index.html` | Any | Links to all of the above for a room |
 

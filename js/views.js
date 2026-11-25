@@ -92,6 +92,15 @@ const DASH = {wide: {x: 400, y: 455, w: 1790, h: 360}, tight: {x: 640, y: 492, w
 function drawDashboard(cv, crop){ drawPanel();
   cropDraw(cv, DASH[crop] || DASH.wide, ctx => { const ck = cockpitImg(); if (ck) ctx.drawImage(ck, 0, 0, 2576, 1288); drawNav(ctx); drawCluster(ctx); }); }
 
+// ---------- instrument cluster (the Seen instrument panel, full screen) ----------
+function drawClusterScreen(cv){
+  const r = cv.getBoundingClientRect(); const ar = PANEL_W / PANEL_H; let pw = r.width, ph = pw / ar; if (ph > r.height) { ph = r.height; pw = ph * ar; }
+  panelCv.dataset.w = Math.max(200, Math.round(pw)); panelCv.dataset.h = Math.max(84, Math.round(ph));
+  drawPanel();
+  const {ctx, w, h} = fit(cv); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(panelCv, (w - pw) / 2, (h - ph) / 2, pw, ph);
+}
+
 // ---------- side mirror (housing photo + live glass + Seen cue) ----------
 const MREG = {L: {x: 0, y: 330, w: 330, h: 290}, R: {x: 2246, y: 330, w: 330, h: 290}};
 function drawMirrorScreen(cv, side, maxW){

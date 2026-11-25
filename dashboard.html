@@ -1,13 +1,13 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Seen · Dashboard</title>
+<title>Seen · Instrument cluster</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="css/display.css"></head>
 <body>
-<canvas class="screen" id="cv" aria-label="Dashboard"></canvas>
+<canvas class="screen" id="cv" aria-label="Instrument cluster"></canvas>
 <div id="badge">connecting…</div>
-<button id="tap"><i></i><b>Dashboard</b><span>Instrument panel and centre screen. This screen also plays the Seen sounds, so tap to allow audio.</span><span style="font-size:13px">Tap to start full screen. Double-tap any time to bring this back.</span></button>
+<button id="tap"><i></i><b>Instrument cluster</b><span>The Seen instrument panel. This screen also plays the Seen sounds, so tap to allow audio.</span><span style="font-size:13px">Tap to start full screen. Double-tap any time to bring this back.</span></button>
 <script src="js/config.js"></script><script src="js/three-min.js"></script><script src="js/street3d.js"></script><script src="js/core.js"></script><script src="js/sync.js"></script><script src="js/views.js"></script>
-<script>const crop=new URLSearchParams(location.search).get('crop')||'wide'; bootDisplay('dashboard', ()=>drawDashboard(document.getElementById('cv'), crop));</script>
+<script>bootDisplay('dashboard', ()=>drawClusterScreen(document.getElementById('cv')));</script>
 </body></html>
