@@ -47,7 +47,7 @@ Tips: plug the iPads in, turn off auto-lock, and use Guided Access so the browse
 ## Participant driving (USB wheel + pedals)
 
 1. Plug the wheel and pedals into the **windscreen computer** (the one driving the big monitor). Use Chrome or Edge.
-2. Open the windscreen link, press a pedal once so the browser sees the wheel, then click **Set up wheel + pedals** (or press Shift+W). Follow the five steps (turn LEFT first on the steering step; feet off the pedals for the indicator steps). The setup is saved in that browser.
+2. Open the windscreen link, press a pedal once so the browser sees the wheel, then click **Set up wheel + pedals** (or press Shift+W). Follow the five steps (turn LEFT first on the steering step; feet off the pedals for the indicator steps). The setup is saved in that browser. If a pedal reads backwards (100% when released), click **Check pedals · flip a reversed one** on the windscreen start screen (or press Shift+C) and use Flip brake / Flip accelerator / Flip steering.
 3. In the wizard console, choose **Driving → Participant drives (wheel)**. The drive starts when the participant presses the accelerator.
 
 How it works:
