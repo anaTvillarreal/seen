@@ -7,7 +7,7 @@ canvas.screen{position:fixed;inset:0;width:100vw;height:100vh;display:block}
 #tap{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(0,0,0,.82);border:0;color:var(--fg);font:inherit;cursor:pointer;text-align:center;padding:24px}
 #tap b{font-size:28px;letter-spacing:-.02em} #tap span{color:var(--muted);max-width:44ch;line-height:1.5}
 #tap i{width:64px;height:64px;border-radius:50%;border:3px solid var(--seen);box-shadow:0 0 24px var(--seen)}
-#padbtn{margin-top:10px;font-size:14px;font-weight:600;color:var(--fg)!important;border:1px solid #444;border-radius:10px;padding:8px 14px;background:#15151c}
+#padbtn,#padchk{margin-top:10px;font-size:14px;font-weight:600;color:var(--fg)!important;border:1px solid #444;border-radius:10px;padding:8px 14px;background:#15151c}
 #padsetup{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.86);padding:24px}
 #padsetup .ps{width:min(520px,100%);background:#131319;border:1px solid #2b2b35;border-radius:18px;padding:22px;display:flex;flex-direction:column;gap:10px}
 #padsetup small{color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-size:11px;font-weight:700} #padsetup b{font-size:22px} #padsetup p{margin:0;color:#cfcfd8;line-height:1.5}

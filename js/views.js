@@ -145,8 +145,8 @@ function bootDisplay(role, draw){
   const q = new URLSearchParams(location.search); const room = q.get('room') || 'booth';
   window.SEEN_ROLE = role; if (role === 'windscreen') window.__seenLiveHost = true;
   const badge = document.getElementById('badge'), tap = document.getElementById('tap');
-  const setup = document.getElementById('padbtn'); if (setup) setup.addEventListener('click', e => { e.stopPropagation(); startWheelSetup(); });
-  if (role === 'windscreen') addEventListener('keydown', e => { if (e.code === 'KeyW' && e.shiftKey) startWheelSetup(); });
+  const setup = document.getElementById('padbtn'); if (setup) setup.addEventListener('click', e => { e.stopPropagation(); startWheelSetup(); }); const chk = document.getElementById('padchk'); if (chk) chk.addEventListener('click', e => { e.stopPropagation(); startWheelSetup(true); });
+  if (role === 'windscreen') addEventListener('keydown', e => { if (e.code === 'KeyW' && e.shiftKey) startWheelSetup(); if (e.code === 'KeyC' && e.shiftKey) startWheelSetup(true); });
   Sync.connect(room).then(() => Sync.presence(role));
   Sync.onState(st => { applySession(st); });
   let conn = 'connecting';

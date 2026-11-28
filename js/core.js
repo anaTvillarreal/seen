@@ -501,7 +501,9 @@ function drawPanel(){
   if(!panelAnim.u) panelAnim.u={};
   const ptrs=[], seen=[];
   S.users.forEach(u=>{ if(!u.info||!u.info.r) return; const r=u.info.r, d=Math.hypot(r.rx,r.ry), ang=Math.atan2(r.rx,r.ry);
-    let lv=(fs&&fs.u===u)?4:(u.kind==='car'?0:(u.level||0)); const a=panelAnim.u[u.id]||(panelAnim.u[u.id]={lv:0,v:0}); a.lv+=(lv-a.lv)*0.12; a.v+=((lv>=1?1:0)-a.v)*0.12;
+    // only road users relevant to the driver's next move get colour and an icon; merely nearby ones stay white
+    const relevant = u.kind!=='car' && ((fs&&fs.u===u) || u.info.inPath || (u.level||0)>=2);
+    let lv=(fs&&fs.u===u)?4:(relevant?(u.level||0):0); const a=panelAnim.u[u.id]||(panelAnim.u[u.id]={lv:0,v:0}); a.lv+=(lv-a.lv)*0.12; a.v+=((lv>=1?1:0)-a.v)*0.12;
     const rp=(Math.max(150,216+(d-4)*8)); ptrs.push({x:CL.cx+Math.sin(ang)*rp, y:CL.cy-Math.cos(ang)*rp, lv:a.lv});
     if(u.kind!=='car' && a.v>0.02) seen.push({u,ang,v:a.v,lv}); });
   // ---- dot field ----

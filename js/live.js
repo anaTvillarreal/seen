@@ -39,7 +39,7 @@ function allInputs(){ const out = []; pads().forEach((p, pi) => {
   p.buttons.forEach((b, i) => out.push({key: `${p.id}|b|${i}`, id: p.id, src: 'b', i, v: b.value, label: `${pads().length > 1 ? 'Device ' + (pi + 1) + ' · ' : ''}Button ${i}${p.mapping === 'standard' && i === 6 ? ' (L2)' : p.mapping === 'standard' && i === 7 ? ' (R2)' : ''}`})); }); return out; }
 
 // ---------- wheel setup (runs once per windscreen computer; saved in that browser) ----------
-function startWheelSetup(){
+function startWheelSetup(checkOnly){
   let box = document.getElementById('padsetup'); if (box) box.remove();
   box = document.createElement('div'); box.id = 'padsetup'; document.body.appendChild(box);
   const steps = [
@@ -49,10 +49,10 @@ function startWheelSetup(){
     {k: 'sigL', t: 'Left indicator', d: 'Feet off the pedals. Press the button or paddle the driver will use for the LEFT indicator.', btn: true},
     {k: 'sigR', t: 'Right indicator', d: 'Press the button or paddle for the RIGHT indicator.', btn: true},
   ];
-  const map = {}; let ix = 0, lo = {}, hi = {}, first = {}, firstDir = {}, startBtns = {}, axisBtns = new Set(), raf = 0, alive = true;
+  const map = {}; let ix = 0, lo = {}, hi = {}, first = {}, firstDir = {}, samp = {}, startBtns = {}, axisBtns = new Set(), raf = 0, alive = true;
   const stop = () => { alive = false; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); };
   const snapBtns = () => { const o = {}; pads().forEach(p => p.buttons.forEach((b, i) => o[p.id + '|' + i] = b.pressed)); return o; };
-  const begin = i => { ix = i; firstDir = {}; if (ix >= steps.length) { finish(); return; } lo = {}; hi = {}; first = {}; allInputs().forEach(c => { lo[c.key] = hi[c.key] = c.v; first[c.key] = c.v; }); startBtns = snapBtns(); render(); };
+  const begin = i => { ix = i; firstDir = {}; samp = {}; if (ix >= steps.length) { finish(); return; } lo = {}; hi = {}; first = {}; allInputs().forEach(c => { lo[c.key] = hi[c.key] = c.v; first[c.key] = c.v; }); startBtns = snapBtns(); render(); };
   const usedKey = m => m ? `${m.id}|${m.src}|${m.i}` : '';
   const commitAxis = () => { const st = steps[ix], now = {}; allInputs().forEach(c => now[c.key] = c);
     let best = null, r = 0.15;
@@ -60,7 +60,7 @@ function startWheelSetup(){
       const range = hi[k] - lo[k]; if (range > r) { r = range; best = c; } });
     if (best) { const k = best.key, base = {id: best.id, src: best.src, i: best.i};
       if (st.k === 'steer') map.steer = Object.assign(base, {c: (lo[k] + hi[k]) / 2, h: (hi[k] - lo[k]) / 2 * (firstDir[k] > 0 ? -1 : 1)});
-      else { const rest = best.v; map[st.k] = Object.assign(base, {rest, full: Math.abs(hi[k] - rest) > Math.abs(lo[k] - rest) ? hi[k] : lo[k]}); } }
+      else { const rg = hi[k] - lo[k], sp = samp[k] || []; const nl = sp.filter(v => v - lo[k] < rg * 0.15).length, nh = sp.filter(v => hi[k] - v < rg * 0.15).length; const restLo = nl !== nh ? nl > nh : Math.abs(best.v - lo[k]) < Math.abs(best.v - hi[k]); map[st.k] = Object.assign(base, {rest: restLo ? lo[k] : hi[k], full: restLo ? hi[k] : lo[k]}); } }
     else { const w = box.querySelector('#pslive'); if (w) { w.insertAdjacentHTML('afterbegin', '<p class="warn">Nothing moved enough. Press it all the way, then Next.</p>'); } return; }
     begin(ix + 1); };
   const bar = (l, v, mid) => `<div class="pb"><span>${l}</span><i><em style="${mid ? `left:${Math.min(v, .5) * 100}%;width:${Math.abs(v - .5) * 100}%` : `width:${v * 100}%`}"></em></i></div>`;
@@ -70,14 +70,16 @@ function startWheelSetup(){
     box.querySelector('#psskip').onclick = () => begin(ix + 1);
     const nx = box.querySelector('#psnext'); if (nx) nx.onclick = commitAxis; };
   const finish = () => { const p = getPad(map.steer && map.steer.id); map.id = p ? p.id : ''; map.v = 2; map.noSig = [...axisBtns]; PAD.map = map; try { localStorage.setItem('seen-pad-map', JSON.stringify(map)); } catch (_) {}
-    box.innerHTML = `<div class="ps"><b>Wheel ready</b><p>Check that each bar moves the right way. If one doesn't, run the setup again.</p><div id="psbars"></div><div class="row"><button id="psagain">Set up again</button><button id="psdone" class="pri">Done</button></div></div>`;
+    box.innerHTML = `<div class="ps"><b>Wheel ready</b><p>Check that each bar moves the right way. If one doesn't, run the setup again.</p><div id="psbars"></div><div class="row" style="justify-content:flex-start"><button id="psfg">Flip accelerator</button><button id="psfb">Flip brake</button><button id="psfs">Flip steering</button></div><div class="row"><button id="psagain">Set up again</button><button id="psdone" class="pri">Done</button></div></div>`;
+    const save = () => { try { localStorage.setItem('seen-pad-map', JSON.stringify(map)); } catch (_) {} }; const flip = m => { if (m) { const r = m.rest; m.rest = m.full; m.full = r; save(); } };
+    box.querySelector('#psfg').onclick = () => flip(map.gas); box.querySelector('#psfb').onclick = () => flip(map.brake); box.querySelector('#psfs').onclick = () => { if (map.steer) { map.steer.h = -map.steer.h; save(); } };
     box.querySelector('#psagain').onclick = () => { stop(); startWheelSetup(); }; box.querySelector('#psdone').onclick = () => { stop(); box.remove(); }; };
   const watch = () => { if (!alive) return;
     const p = getPad(), el = box.querySelector('#pslive'), bars = box.querySelector('#psbars'), st = steps[ix];
     if (bars) { readInputs(); bars.innerHTML = bar('Steering', (LIVEIN.wheel + 1) / 2, true) + bar('Accelerator', LIVEIN.gas) + bar('Brake', LIVEIN.brake) + `<p>Indicator: <b>${LIVEIN.sig === 'L' ? '← left' : LIVEIN.sig === 'R' ? 'right →' : 'off'}</b></p>`; }
     else if (el) {
       if (!p) el.innerHTML = '<p class="warn">No wheel found. Plug it in, then press a pedal or button so the browser sees it.</p>';
-      else if (!st.btn) { const all = allInputs(); pads().forEach(q => q.buttons.forEach((bb, i) => { if (bb.pressed || bb.value > 0.1) axisBtns.add(q.id + '|' + i); })); all.forEach(c => { lo[c.key] = Math.min(lo[c.key] ?? c.v, c.v); hi[c.key] = Math.max(hi[c.key] ?? c.v, c.v); if (!firstDir[c.key] && Math.abs(c.v - first[c.key]) > 0.4) firstDir[c.key] = Math.sign(c.v - first[c.key]); });
+      else if (!st.btn) { const all = allInputs(); pads().forEach(q => q.buttons.forEach((bb, i) => { if (bb.pressed || bb.value > 0.1) axisBtns.add(q.id + '|' + i); })); all.forEach(c => { lo[c.key] = Math.min(lo[c.key] ?? c.v, c.v); hi[c.key] = Math.max(hi[c.key] ?? c.v, c.v); if (!firstDir[c.key] && Math.abs(c.v - first[c.key]) > 0.4) firstDir[c.key] = Math.sign(c.v - first[c.key]); const sp = samp[c.key] || (samp[c.key] = []); if (sp.length < 900) sp.push(c.v); });
         const show = all.filter(c => c.src === 'a' || (hi[c.key] - lo[c.key]) > 0.05 || c.v > 0.05);
         el.innerHTML = `<p class="dim">${pads().map(p => p.id + (p.mapping ? ' · ' + p.mapping : '')).join('<br>')}</p>` + show.map(c => `<div class="pb"><span>${c.label}</span><i><em style="${c.src === 'b' ? `left:0;width:${c.v * 100}%` : `left:${(Math.min(c.v, 0) + 1) / 2 * 100}%;width:${Math.abs(c.v) / 2 * 100}%`}"></em></i></div>`).join(''); }
       else { el.innerHTML = '<p class="dim">Waiting for a button…</p>'; const pedalKeys = [...axisBtns, ...[map.gas, map.brake].filter(m => m && m.src === 'b').map(m => m.id + '|' + m.i)];
@@ -87,7 +89,8 @@ function startWheelSetup(){
     raf = requestAnimationFrame(watch); };
   const onKey = e => { if (e.code === 'Enter' && steps[ix] && !steps[ix].btn && box.querySelector('#psnext')) commitAxis(); if (e.code === 'Escape') { stop(); box.remove(); } };
   addEventListener('keydown', onKey);
-  begin(0); raf = requestAnimationFrame(watch);
+  if (checkOnly && PAD.map) { Object.assign(map, PAD.map); ix = steps.length; finish(); } else begin(0);
+  raf = requestAnimationFrame(watch);
 }
 
 // ---------- host: pack the state and broadcast it ----------
