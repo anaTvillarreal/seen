@@ -56,6 +56,10 @@ How it works:
 - **Navigation · next turn** sets the arrow on the cluster; it counts down to the next junction.
 - Cyclists: "Aware" is a subtle cue (dimmer, smaller) and only shows while a cyclist is close. Seen escalates to Caution when the driver indicates or turns toward a cross street whose path would cross the cyclist, and to Urgent once a committed turn is about to meet them.
 - The windscreen computer runs the simulation and broadcasts the car about 15 times a second; keep its tab open and in front.
+- The indicators switch on automatically when the participant turns the wheel, and off after the turn (or 1.5 s after the wheel is centred).
+- **Turn hold:** if a turn would cut across a cyclist or pedestrian Seen is tracking, the car keeps its lane instead of turning; the cluster shows lane lines beside the car.
+- **Automatic slowing:** emergency braking shows orange arcs ahead of the car on the cluster.
+- At night (and in rain) the car's headlights are on and the street lamps nearest the car light the road.
 - The wheel's force feedback and the pedal "push back" can't be driven from a browser; Seen's pedal cue is simulated by weakening the accelerator.
 
 ## Adding road users during a run
