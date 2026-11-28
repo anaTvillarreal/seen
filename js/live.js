@@ -99,7 +99,7 @@ function packLive(){
   return {k: liveKey(), n: ++pubN, t: r3(S.t), pr: preset,
     c: [r3(c.x), r3(c.y), r3(c.v), r3(c.theta), r3(c.steer), c.brake ? 1 : 0, c.gas ? 1 : 0, c.sig || '', r3(c.blink), c.done ? 1 : 0],
     u: S.users.map(u => { const i = u.info || {}; return [u.id, u.kind, r3(u.x), r3(u.y), r3(u.vx), r3(u.vy), u.state || '', u.level || 0, r3(u.levelSince), r3(u.ledFade), i.inPath ? 1 : 0, i.react ? 1 : 0, i.why || '', i.bsd ? 1 : 0]; }),
-    fs: S.failsafe ? [S.failsafe.u.id, r3(S.failsafe.t)] : 0, st: S.started ? 1 : 0, sg: S.seg || 0, rb: S.rebases || 0, p: S.primary ? S.primary.id : '', top: S.top || 0, pp: S.pedalPush ? 1 : 0, ls: r3(S.lastSlowSound), ll: S.lastLevel || 0,
+    fs: S.failsafe ? [S.failsafe.u.id, r3(S.failsafe.t)] : 0, st: S.started ? 1 : 0, rd: S.car.road ? [S.car.road.t, S.car.road.k, S.car.road.d] : 0, tr: S.car.turn ? [S.car.turn.to.t, S.car.turn.to.k, S.car.turn.to.d] : 0, p: S.primary ? S.primary.id : '', top: S.top || 0, pp: S.pedalPush ? 1 : 0, ls: r3(S.lastSlowSound), ll: S.lastLevel || 0,
     ev: EVQ.slice(-12).map(e => ({n: e.n, k: e.k, h: e.h || '', s: e.s || '', p: e.p || 0, t: e.t || 0})),
     inp: {g: r3(LIVEIN.gas), b: r3(LIVEIN.brake), w: r3(LIVEIN.wheel), sig: LIVEIN.sig || '', pad: PAD.name || '', map: PAD.map && !PAD.old ? 1 : 0}};
 }
@@ -116,7 +116,7 @@ function unpackLive(L){
     u.info = {inPath: !!q[10], react: !!q[11], why: q[12] || '', bsd: !!q[13]}; return u; });
   const find = id => S.users.find(u => u.id === id) || null;
   S.failsafe = L.fs ? {u: find(L.fs[0]), t: L.fs[1]} : null; if (S.failsafe && !S.failsafe.u) S.failsafe = null;
-  S.started = !!L.st; S.seg = L.sg || 0; S.rebases = L.rb || 0;
+  S.started = !!L.st; c.road = L.rd ? {t: L.rd[0], k: L.rd[1], d: L.rd[2]} : null; c.turn = L.tr ? {to: {t: L.tr[0], k: L.tr[1], d: L.tr[2]}, dir: 0} : null;
   S.primary = L.p ? find(L.p) : null; S.top = L.top || 0; S.pedalPush = !!L.pp; S.lastSlowSound = L.ls; S.lastLevel = L.ll;
 }
 function followLive(){

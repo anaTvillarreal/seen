@@ -47,9 +47,7 @@ function update3D(){
   const st = st3(); if (!st) return null; const c = S.car;
   st.setEnv(opts.env); st.zebras.forEach(z => z.visible = (preset === 'pedYield'));
   const list = [];
-  if (liveWorld()) { for (let y = Math.floor((c.y - 40) / 6.5) * 6.5; y < c.y + 150; y += 6.5) { if (inJunction(y, 3.5)) continue; list.push({x: LV.parkX, y}); }
-    // parked cars on the cross streets near the car, so a turn shows a real street
-    for (let n = Math.floor((c.y - 30 - LV.J0) / LV.B); n <= Math.floor((c.y + 90 - LV.J0) / LV.B); n++) { const y0 = LV.J0 + n * LV.B; for (let k = 0; k < 7; k++) { const xx = LV.road[1] + 9 + k * 6.5; list.push({x: xx, y: y0 + 1.1, theta: Math.PI / 2}); list.push({x: LV.road[0] - 9 - k * 6.5, y: y0 + (LV.J1 - LV.J0) - 1.1, theta: -Math.PI / 2}); } } }
+  if (liveWorld()) { /* parked cars are part of the static grid */ }
   else if (preset !== 'carBike') for (let y = Math.floor((c.y - 20) / 6.5) * 6.5; y < c.y + 110; y += 6.5) { if (Math.abs(y - 43) < 4 && preset === 'pedYield') continue; if (atInter(y, 1, 3)) continue; list.push({x: 2.55, y}); }
   st.setParked(list);
   const cars = S.users.filter(u => u.kind === 'car'); const MC = [0x9aa0a8, 0x3c5a7a, 0x7a2c28, 0xd8d8dc, 0x4b4e58, 0x2e4a3a]; while (st.movers.length < cars.length) { const m = st.makeCar(MC[st.movers.length % MC.length]); st.scene.add(m); st.movers.push(m); }
@@ -85,6 +83,7 @@ function drawWindscreen(cv, maxW){
   const c = S.car, fx = Math.sin(c.theta), fy = Math.cos(c.theta);
   st.camera.position.set(c.x - fx * 0.2, 1.25, -(c.y - fy * 0.2)); st.camera.lookAt(c.x + fx * 10, 1.25, -(c.y + fy * 10));
   const r = renderInto(st, st.camera, W, H); ctx.drawImage(r.cv, r.sx, r.sy, W, H, 0, 0, w, h);
+  if (liveWorld() && window.SEEN_ROLE === 'windscreen') { const left = roadLeft(S.car); if (left !== null && left < 25) { const bh = h * 0.08; ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(0, h * 0.12, w, bh); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = `600 ${Math.round(bh * 0.42)}px ${FONT}`; ctx.fillText(S.car.v < 0.2 ? 'Dead end' : 'Dead end ahead', w / 2, h * 0.12 + bh * 0.64); ctx.textAlign = 'left'; } }
   if (liveWorld() && !S.started && !SESSION.paused && window.SEEN_ROLE === 'windscreen') { ctx.fillStyle = 'rgba(0,0,0,.45)'; const bh = h * 0.09; ctx.fillRect(0, h * 0.78, w, bh); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = `600 ${Math.round(bh * 0.42)}px ${FONT}`; ctx.fillText('Press the accelerator to start', w / 2, h * 0.78 + bh * 0.64); ctx.textAlign = 'left'; }
   if (false) { ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, h * 0.4, w, h * 0.2); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = `700 ${Math.round(h * 0.06)}px ${FONT}`; ctx.fillText('End of route', w / 2, h * 0.5 + h * 0.02); ctx.textAlign = 'left'; }
   if (opts.env === 'rain') { ctx.fillStyle = 'rgba(225,235,250,.3)'; for (let i = 0; i < 140; i++) { const x = (i * 211.7) % w, y = (i * 97.3 + S.t * (25 + (i % 5) * 12) * (h / 600)) % h; ctx.beginPath(); ctx.arc(x, y, (2 + (i % 4)) * w / 1600, 0, 7); ctx.fill(); } }

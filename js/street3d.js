@@ -236,5 +236,113 @@ window.SeenStreet3D = (function(){
     setFocus((rx0+rx1)/2,(y0+y1)/2); setEnv(cfg.env||'day');
     return {T,scene,camera,renderer,setEnv,setFocus,setPinhole,setSize,render,project,setParked,makeCar,zebras,P,makePerson3D,posePerson3D};
   }
-  return {create,makeCar,makePerson3D,posePerson3D};
+
+  // ---------- finite city grid for participant driving ----------
+  // Every road is a one-way avenue: [passing lane | ego lane | bike lane | parking] measured from its axis (the ego lane centre)
+  // to the right of travel. Directions alternate road by road; static geometry is instanced per 240 m tile so it culls.
+  function createGrid(cfg){
+    const G=cfg.grid, Ln=cfg.lane, ROADS=cfg.roads, B=G.B, N=G.N, EXT=G.EXT, scene=new T.Scene();
+    const renderer=new T.WebGLRenderer({antialias:true,preserveDrawingBuffer:true,alpha:false});
+    renderer.outputColorSpace=T.SRGBColorSpace; renderer.toneMapping=T.ACESFilmicToneMapping; renderer.toneMappingExposure=1.0;
+    renderer.shadowMap.enabled=true; renderer.shadowMap.type=T.PCFShadowMap; renderer.setPixelRatio(1);
+    const camera=new T.PerspectiveCamera(50,2,0.3,450);
+    const hemi=new T.HemisphereLight(0xcfe0f0,0x8f8478,1.2); scene.add(hemi);
+    const sun=new T.DirectionalLight(0xfff1dc,2.4); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048); const sc=sun.shadow.camera; sc.left=-45; sc.right=45; sc.top=45; sc.bottom=-45; sc.near=1; sc.far=160; sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.03; scene.add(sun); scene.add(sun.target);
+    const o3=new T.Object3D(); const TILE=320, batches={};
+    const mat4=(x,y,z,rot,sx,sy,sz)=>{ o3.position.set(x,z,-y); o3.rotation.set(0,rot,0); o3.scale.set(sx,sy,sz); o3.updateMatrix(); return o3.matrix.clone(); };
+    function inst(key,geo,mat,x,y,m,color,opts){ const k=Math.floor(x/TILE)+','+Math.floor(y/TILE)+'|'+key; let b=batches[k]; if(!b) b=batches[k]={geo,mat,list:[],colors:[],opts:opts||{}}; b.list.push(m); if(color!==undefined) b.colors.push(color); }
+    // road frame: origin on the ego-lane line (centre + EGO to the right of travel), s forward, l to the right
+    const fv=R=>R.t==='v'?[0,R.d]:[R.d,0], rv=R=>R.t==='v'?[R.d,0]:[0,-R.d], cv=R=>R.t==='v'?[R.k*B,0]:[0,R.k*B];
+    const ov=R=>{ const c=cv(R), r=rv(R); return [c[0]+r[0]*Ln.ego, c[1]+r[1]*Ln.ego]; };
+    const P=(R,s,l)=>{ const f=fv(R),r=rv(R),o=ov(R); return [o[0]+f[0]*s+r[0]*l, o[1]+f[1]*s+r[1]*l]; };
+    const rotOf=R=>{ const f=fv(R); return -Math.atan2(f[0],f[1]); };
+    const flat=new T.PlaneGeometry(1,1); flat.rotateX(-Math.PI/2);
+    const white=new T.MeshStandardMaterial({color:0xf2f2f2,roughness:0.7}), green=new T.MeshStandardMaterial({color:0x6f9c79,roughness:0.9});
+    const bmat=new T.MeshBasicMaterial({map:bikeTex(),transparent:true,opacity:0.85,depthWrite:false});
+    const curbMat=new T.MeshStandardMaterial({color:0xcfc9bd,roughness:0.85}), unitBox=new T.BoxGeometry(1,1,1);
+    const span=(N-1)*B, pav=pavingTex(); pav.repeat.set(220,220);
+    const ground=new T.Mesh(new T.PlaneGeometry(span+700,span+700), new T.MeshStandardMaterial({map:pav,roughness:0.95})); ground.rotation.x=-Math.PI/2; ground.position.set(span/2,0,-span/2); ground.receiveShadow=true; scene.add(ground);
+    const asph=asphaltTex(); const roadMats=[];
+    function asphalt(x0,x1,y0,y1,h){ const mat=new T.MeshStandardMaterial({map:asph.clone(),roughness:0.92,color:0xffffff}); mat.map.needsUpdate=true; mat.map.repeat.set((x1-x0)/3,(y1-y0)/3); roadMats.push(mat);
+      const m=new T.Mesh(new T.PlaneGeometry(x1-x0,y1-y0),mat); m.rotation.x=-Math.PI/2; m.position.set((x0+x1)/2,h,-(y0+y1)/2); m.receiveShadow=true; scene.add(m); }
+    const half=(Ln.road[1]-Ln.road[0])/2;
+    // the physical roads are given with d=+1, so s is simply the coordinate along the road's axis
+    const bandsOn=R=>ROADS.filter(Q=>Q.t!==R.t).map(Q=>[Q.k*B-half,Q.k*B+half]).sort((a,b)=>a[0]-b[0]);
+    const buildRoads=()=>ROADS.forEach(R=>{ const bands=bandsOn(R), rot=rotOf(R);
+      if(R.t==='v') asphalt(R.k*B-half,R.k*B+half,-EXT,span+EXT,0.012);
+      else { const cuts=[[-EXT-1,-EXT],...bands,[span+EXT,span+EXT+1]]; for(let i=0;i<cuts.length-1;i++){ const a=cuts[i][1], b=cuts[i+1][0]; if(b>a) asphalt(a,b,R.k*B-half,R.k*B+half,0.012); } }
+      const cuts=[[-EXT-1,-EXT],...bands,[span+EXT,span+EXT+1]];
+      for(let i=0;i<cuts.length-1;i++){ const sa=cuts[i][1], sb=cuts[i+1][0], len=sb-sa, sm=(sa+sb)/2; if(len<2) continue;
+        const put=(key,geo,mat,l,w,h,y,ln,s,opts,rr)=>{ const p=P(R,s===undefined?sm:s,l); inst(key,geo,mat,p[0],p[1],mat4(p[0],p[1],y,rot+(rr||0),w,h,ln===undefined?len:ln),undefined,opts); };
+        Ln.bikes.forEach(([a,b],bi2)=>{ put('bike',flat,green,(a+b)/2,b-a,1,0.016,undefined,undefined,{recv:1});
+          for(let s=sa+6;s<sb-3;s+=18) put('bsym',flat,bmat,(a+b)/2,1.1,1,0.02,1.1,s,undefined,bi2?Math.PI:0); });
+        Ln.solid.forEach(l=>put('line',flat,white,l,0.12,1,0.022,undefined,undefined,{recv:1}));
+        for(let s=sa+1;s<sb-1.6;s+=3) put('dash',flat,white,Ln.centre,0.14,1,0.022,1.6,s+0.8,{recv:1});
+        [Ln.road[0]-0.11,Ln.road[1]+0.11].forEach(l=>put('curb',unitBox,curbMat,l,0.22,0.14,0.07,undefined,undefined,{cast:1,recv:1}));
+        Ln.parks.forEach(([l,dir])=>{ for(let s=sa+5;s<sb-4;s+=6.5){ const p=P(R,s,l); parkedCar(p[0],p[1],rot+(dir<0?Math.PI:0)); } });
+        [Ln.road[0]-2.2,Ln.road[1]+2.2].forEach(l=>{ for(let s=sa+4;s<sb-3;s+=12){ const p=P(R,s,l); tree(p[0],p[1]); } });
+        [[Ln.road[0]-0.55,-1],[Ln.road[1]+0.55,1]].forEach(([l,sd])=>{ for(let s=sa+8;s<sb-4;s+=26){ const p=P(R,s,l), q=P(R,s,l-sd*1.05); lamp(p[0],p[1],q[0],q[1],rot+(sd>0?Math.PI/2:-Math.PI/2)); } });
+      }
+      // dead ends: a wall of buildings across both road ends
+      [[-EXT,1],[span+EXT,-1]].forEach(([s0,face])=>{ const l0=Ln.road[0]-Ln.walk, l1=Ln.road[1]+Ln.walk, n=Math.max(2,Math.round((l1-l0)/12)), w=(l1-l0)/n, f=fv(R);
+        for(let q=0;q<n;q++){ const p=P(R,s0,l0+w*(q+0.5)); bld(p[0],p[1],f[0]*face,f[1]*face,w); } });
+    });
+    // parked cars: instanced parts of a template car
+    const tpl=makeCar(0x111215); tpl.updateMatrixWorld(true); const parts=[]; tpl.traverse(m=>{ if(m.isMesh) parts.push({geo:m.geometry,mat:m.material,local:m.matrixWorld.clone()}); });
+    function parkedCar(x,y,rot){ const M=mat4(x,y,0,rot,1,1,1); parts.forEach(pt=>inst('car'+pt.geo.uuid+pt.mat.uuid,pt.geo,pt.mat,x,y,M.clone().multiply(pt.local),undefined,{cast:1,recv:1})); }
+    // trees
+    const trunkG=new T.CylinderGeometry(0.13,0.2,3.4,7); trunkG.translate(0,1.7,0); const trunkM=new T.MeshStandardMaterial({color:0x6b5a48,roughness:0.95});
+    const blobG=new T.IcosahedronGeometry(1.5,1); const leafM=new T.MeshStandardMaterial({color:0xffffff,roughness:0.9,flatShading:true}); const leafCols=[0x4f6f3c,0x5d7a43,0x445f34,0x6a8448]; let ti=0;
+    function tree(x,y){ ti++; inst('trunk',trunkG,trunkM,x,y,mat4(x,y,0,0,1,1,1),undefined,{cast:1});
+      [[0,4.5,0,1.35],[-0.8,4.0,0.3,1.0],[0.7,4.3,-0.3,1.05]].forEach(([dx,dz,dy,k],j)=>{ const kk=k*(0.85+hash(ti*5+j)*0.3); o3.position.set(x+dx,dz,-(y+dy)); o3.rotation.set(hash(ti+j),hash(ti*2+j),0); o3.scale.set(kk,kk*0.85,kk); o3.updateMatrix();
+        inst('leaf',blobG,leafM,x,y,o3.matrix.clone(),new T.Color(leafCols[(ti+j)%4]),{cast:1,recv:1}); }); }
+    // lamps (glow pools only at night / rain)
+    const poleG=new T.CylinderGeometry(0.07,0.09,6.3,8); poleG.translate(0,3.15,0); const armG=new T.BoxGeometry(0.08,0.08,1.2), headG=new T.BoxGeometry(0.26,0.14,0.5);
+    const poleM=new T.MeshStandardMaterial({color:0x2e3036,roughness:0.6,metalness:0.4}), headM=new T.MeshStandardMaterial({color:0xd8dadf,emissive:0xffd9a0,emissiveIntensity:0});
+    const poolT=canvasTex(128,128,(g)=>{ const r=g.createRadialGradient(64,64,1,64,64,64); r.addColorStop(0,'rgba(255,200,130,0.42)'); r.addColorStop(0.45,'rgba(255,200,130,0.14)'); r.addColorStop(0.85,'rgba(255,200,130,0)'); r.addColorStop(1,'rgba(255,200,130,0)'); g.fillStyle=r; g.fillRect(0,0,128,128); });
+    const poolM=new T.MeshBasicMaterial({map:poolT,fog:false,blending:T.AdditiveBlending,depthWrite:false,transparent:true});
+    function lamp(x,y,hx,hy,rot){ inst('pole',poleG,poleM,x,y,mat4(x,y,0,0,1,1,1),undefined,{cast:1});
+      inst('arm',armG,poleM,x,y,mat4((x+hx)/2,(y+hy)/2,6.25,rot,1,1,1)); inst('lhead',headG,headM,x,y,mat4(hx,hy,6.15,rot,1,1,1)); inst('pool',flat,poolM,x,y,mat4(hx,hy,0.03,0,7,1,7),undefined,{pool:1}); }
+    // buildings around every block (instanced per facade variant)
+    const avX=k=>[k*B-half,k*B+half], stY=k=>[k*B-half,k*B+half];
+    const SW=Ln.walk, facadeMats=[], combos={}; let bi=0;
+    function comboMats(col,floors,seed){ const k=col+floors+seed; if(combos[k]) return combos[k]; const ft=facadeTex(col,floors,seed);
+      const fm=new T.MeshStandardMaterial({map:ft.map,emissiveMap:ft.emissive,emissive:0xffffff,emissiveIntensity:0,roughness:0.92}); facadeMats.push(fm);
+      const wall=new T.MeshStandardMaterial({color:new T.Color(col).multiplyScalar(0.82),roughness:0.95}), roof=new T.MeshStandardMaterial({color:0x5a4a42,roughness:0.9});
+      return combos[k]={mats:[wall,wall,roof,roof,fm,wall],H:ft.Hm,key:'b'+k}; }
+    function bld(x,y,fx,fy,w){ bi++; const v=Math.floor(hash(bi*3)*8), col=PALETTE[v], floors=4+(v%3), C=comboMats(col,floors,v%2);
+      const rot=Math.atan2(fx,-fy); inst(C.key,unitBox,C.mats,x,y,mat4(x-fx*6,y-fy*6,C.H/2,rot,w,C.H,12),undefined,{cast:1,recv:1}); }
+    for(let i=-1;i<N;i++) for(let j=-1;j<N;j++){
+      const x0=i>=0?avX(i)[1]+SW:-EXT-12, x1=i+1<N?avX(i+1)[0]-SW:span+EXT+12, y0=j>=0?stY(j)[1]+SW:-EXT-12, y1=j+1<N?stY(j+1)[0]-SW:span+EXT+12;
+      const row=(a,b,cb)=>{ const n=Math.max(1,Math.floor((b-a)/14)), w=(b-a)/n; for(let q=0;q<n;q++) cb(a+w*(q+0.5),w); };
+      if(j>=0) row(x0,x1,(x,w)=>bld(x,y0,0,-1,w)); if(j+1<N) row(x0,x1,(x,w)=>bld(x,y1,0,1,w));
+      if(i>=0) row(y0+12,y1-12,(y,w)=>bld(x0,y,-1,0,w)); if(i+1<N) row(y0+12,y1-12,(y,w)=>bld(x1,y,1,0,w)); }
+    buildRoads();
+    // build the instanced meshes
+    const pools=[];
+    Object.values(batches).forEach(b=>{ const m=new T.InstancedMesh(b.geo,b.mat,b.list.length); b.list.forEach((M,i)=>m.setMatrixAt(i,M)); if(b.colors.length) b.colors.forEach((c,i)=>m.setColorAt(i,c));
+      m.castShadow=!!b.opts.cast; m.receiveShadow=!!b.opts.recv; m.computeBoundingSphere(); if(b.opts.pool){ m.visible=false; pools.push(m); } scene.add(m); });
+    // sky + env (same looks as the scripted street)
+    const pmrem=new T.PMREMGenerator(renderer); const envCache={};
+    function envFor(env,top,mid,bot){ if(envCache[env]) return envCache[env]; const s=new T.Scene(); s.add(new T.Mesh(new T.SphereGeometry(50,32,16),new T.MeshBasicMaterial({side:T.BackSide,map:skyTex(top,mid,bot)}))); return envCache[env]=pmrem.fromScene(s,0.04).texture; }
+    const ENVS={
+      day:{sky:['#7E9BBE','#BFD0E0','#E6E4DE'],fog:0xD2D8DE,fogN:45,fogF:260,hemi:[0xcfe0f0,0x8f8478,1.15],sun:[0xfff1dc,2.6],shadow:true,win:0,lamp:false,road:[0.92,0],exp:1.0},
+      night:{sky:['#07080F','#141726','#3A2E2C'],fog:0x15161D,fogN:25,fogF:180,hemi:[0x34406a,0x14110e,0.35],sun:[0x8fa4ff,0.18],shadow:false,win:1.8,lamp:true,road:[0.75,0.05],exp:1.1},
+      rain:{sky:['#59626F','#8B949F','#A3A7AB'],fog:0x8D95A0,fogN:15,fogF:140,hemi:[0xa9b4c2,0x4a4a4a,1.0],sun:[0xd8e0ea,0.35],shadow:false,win:0.5,lamp:true,road:[0.25,0.25],exp:1.0},
+    };
+    let curEnv=null;
+    function setEnv(env){ if(env===curEnv) return; curEnv=env; const E=ENVS[env];
+      scene.background=skyTex(...E.sky); scene.fog=new T.Fog(E.fog,E.fogN,E.fogF); scene.environment=envFor(env,...E.sky); scene.environmentIntensity=env==='night'?0.25:0.6;
+      hemi.color.set(E.hemi[0]); hemi.groundColor.set(E.hemi[1]); hemi.intensity=E.hemi[2]; sun.color.set(E.sun[0]); sun.intensity=E.sun[1]; sun.castShadow=E.shadow;
+      facadeMats.forEach(m=>m.emissiveIntensity=E.win); headM.emissiveIntensity=E.lamp?3:0; pools.forEach(p=>p.visible=E.lamp); poolM.opacity=env==='night'?1:0.35;
+      roadMats.forEach(m=>{ m.roughness=E.road[0]; m.metalness=E.road[1]; }); tailMat.emissiveIntensity=env==='night'?1.6:0.6; renderer.toneMappingExposure=E.exp; }
+    function setFocus(x,y){ sun.position.set(x+28,40,-y+16); sun.target.position.set(x,0,-y); sun.target.updateMatrixWorld(); }
+    function setPinhole(w,h,f,cx,cy){ const fw=2*Math.max(cx,w-cx)+2, fh=2*Math.max(cy,h-cy)+2; camera.aspect=fw/fh; camera.fov=2*Math.atan(fh/2/f)*180/Math.PI; camera.setViewOffset(fw,fh,fw/2-cx,fh/2-cy,w,h); camera.updateProjectionMatrix(); }
+    function setSize(w,h){ const c=renderer.domElement; if(c.width!==w||c.height!==h) renderer.setSize(w,h,false); }
+    function project(x,y,z,w,h){ const v=new T.Vector3(x,z||0,-y).project(camera); return [(v.x+1)/2*w,(1-v.y)/2*h,v.z]; }
+    function render(){ renderer.render(scene,camera); return renderer.domElement; }
+    setFocus(span/2,span/2); setEnv(cfg.env||'day');
+    return {T,scene,camera,renderer,setEnv,setFocus,setPinhole,setSize,render,project,setParked:()=>{},makeCar,zebras:[],makePerson3D,posePerson3D,instCount:Object.keys(batches).length};
+  }
+  return {create,createGrid,makeCar,makePerson3D,posePerson3D};
 })();
