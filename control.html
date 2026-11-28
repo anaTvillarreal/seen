@@ -73,7 +73,7 @@ kbd{font:inherit;font-size:11px;padding:1px 5px;border:1px solid var(--line2);bo
         <div class="gauges" id="gauges"></div>
         <span class="lab" style="margin-top:8px;display:block">Navigation · next turn</span>
         <div class="row" style="margin-top:6px"><button data-route="S">↑ Straight</button><button data-route="L">↰ Next left</button><button data-route="R">↱ Next right</button></div>
-        <p class="hint">Endless grid of one-way avenues: passing lane · car lane · bike lane · parked cars, with a cross street every 110 m. The car keeps its lane; turning the wheel before a cross street commits the turn. Indicators: wheel buttons, or Q / E on the windscreen keyboard.</p>
+        <p class="hint">A 7 × 7 city grid of two-way streets (parking · bike lane · oncoming lane | your lane · bike lane · parking), a junction every 110 m, closed by a wall of buildings so every street ends in a dead end. Left and right turns work at every junction; the cluster arrow shows the turn you pick here. The car keeps its lane; turning the wheel in the last ~20 m before a junction makes the turn. At a dead end the car stops: press Restart. Indicators: wheel buttons, or Q / E on the windscreen keyboard.</p>
       </div>
     </section>
     <section class="card" id="scenarioCard">
@@ -103,8 +103,8 @@ kbd{font:inherit;font-size:11px;padding:1px 5px;border:1px solid var(--line2);bo
       <span class="lab">Add road users · placed relative to the car</span>
       <div class="lab" style="font-size:10px">Cyclists</div>
       <div class="row" data-mode="script"><button data-spawn="cycBehindL">From behind · left <kbd>C</kbd></button><button data-spawn="cycAheadL">Slow, ahead · left</button><button data-spawn="cycBehindR">From behind · right <kbd>V</kbd></button></div>
-      <div class="row" data-mode="live"><button data-spawn="cycBikeBehind">From behind · bike lane <kbd>C</kbd></button><button data-spawn="cycSplitBehind">From behind · between lanes <kbd>V</kbd></button></div>
-      <div class="row" data-mode="live"><button data-spawn="cycBikeAhead">Slow, ahead · bike lane</button><button data-spawn="cycSplitAhead">Slow, ahead · between lanes</button></div>
+      <div class="row" data-mode="live"><button data-spawn="cycBikeBehind">From behind · bike lane <kbd>C</kbd></button><button data-spawn="cycSplitBehind">From behind · centre line <kbd>V</kbd></button></div>
+      <div class="row" data-mode="live"><button data-spawn="cycBikeAhead">Slow, ahead · bike lane</button><button data-spawn="cycSplitAhead">Slow, ahead · centre line</button></div>
       <div class="lab" style="font-size:10px">Pedestrians</div>
       <div class="row"><button data-spawn="pedR">Crosses from right</button><button data-spawn="pedL">Crosses from left</button><button data-spawn="pedRand">Random <kbd>P</kbd></button></div>
       <div class="row"><button data-spawn="pedCornerL">At next left corner</button><button data-spawn="pedCornerR">At next right corner</button><button data-spawn="clear">Clear all</button></div>
@@ -144,6 +144,6 @@ kbd{font:inherit;font-size:11px;padding:1px 5px;border:1px solid var(--line2);bo
     </div>
   </div>
 </main>
-<script src="js/config.js?v=7"></script><script src="js/three-min.js?v=7"></script><script src="js/street3d.js?v=7"></script><script src="js/core.js?v=7"></script><script src="js/sync.js?v=7"></script><script src="js/live.js?v=7"></script><script src="js/views.js?v=7"></script>
-<script src="js/control.js?v=7"></script>
+<script src="js/config.js?v=9"></script><script src="js/three-min.js?v=9"></script><script src="js/street3d.js?v=9"></script><script src="js/core.js?v=9"></script><script src="js/sync.js?v=9"></script><script src="js/live.js?v=9"></script><script src="js/views.js?v=9"></script>
+<script src="js/control.js?v=9"></script>
 </body></html>

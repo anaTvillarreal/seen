@@ -51,10 +51,9 @@ Tips: plug the iPads in, turn off auto-lock, and use Guided Access so the browse
 3. In the wizard console, choose **Driving → Participant drives (wheel)**. The drive starts when the participant presses the accelerator.
 
 How it works:
-- The participant drives an endless grid of one-way avenues: passing lane (cars overtake here), their lane, bike lane, parked cars (all black). A cross street every 110 m. The street starts empty so they can get used to the wheel; add road users when they're ready. The scenario panel is hidden in this mode.
-- The car keeps its lane. Turning the wheel in the last ~20 m before a cross street commits a left or right turn; the pedals still control speed. Indicators: the wheel buttons chosen in setup (keyboard: Q / E).
-- After each turn (or each block driven straight) the world re-centres on the car, so the city never ends.
-- **Navigation · next turn** sets the arrow on the cluster.
+- The participant drives a 7 × 7 city grid (about 660 m square) of two-way streets: parking · bike lane · oncoming lane | their lane · bike lane · parking (parked cars all black), with a junction every 110 m. Oncoming cars pass in the other lane. A wall of buildings closes the city, so every street ends in a dead end; the car stops there on its own ("Dead end" on the windscreen) and you press Restart.
+- The car keeps its lane. Turning the wheel in the last ~20 m before a junction makes a left or right turn (both work everywhere); the pedals still control speed. Indicators: the wheel buttons chosen in setup (keyboard: Q / E).
+- **Navigation · next turn** sets the arrow on the cluster; it counts down to the next junction.
 - Cyclists: "Aware" is a subtle cue (dimmer, smaller) and only shows while a cyclist is close. Seen escalates to Caution when the driver indicates or turns toward a cross street whose path would cross the cyclist, and to Urgent once a committed turn is about to meet them.
 - The windscreen computer runs the simulation and broadcasts the car about 15 times a second; keep its tab open and in front.
 - The wheel's force feedback and the pedal "push back" can't be driven from a browser; Seen's pedal cue is simulated by weakening the accelerator.
@@ -62,4 +61,4 @@ How it works:
 ## Adding road users during a run
 
 The **Add road users** buttons place cyclists and pedestrians relative to the car, so they work in both scripted and participant runs:
-in participant mode: cyclist from behind or slow ahead, in the bike lane (C) or between the two car lanes (V); in scripted mode: cyclist from behind on the left (C), slow cyclist ahead on the left, cyclist from behind on the right (V); pedestrian crossing from the right / left, random pedestrian (P), and a pedestrian at the next left / right corner, who starts crossing the side street when the car is about 24 m away.
+in participant mode: cyclist from behind or slow ahead, in the bike lane (C) or on the centre line between the two directions (V); in scripted mode: cyclist from behind on the left (C), slow cyclist ahead on the left, cyclist from behind on the right (V); pedestrian crossing from the right / left, random pedestrian (P), and a pedestrian at the next left / right corner, who starts crossing the side street when the car is about 24 m away.
