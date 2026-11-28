@@ -14,12 +14,14 @@ Sync.onDevices(d => { const have = new Set(Object.values(d || {}).map(x => x.rol
 
 // ---------- actions ----------
 function currentOverride(){ const o = CS.overrides || []; return o.length ? o[o.length - 1].level : -1; }
-function play(){ if (CS.paused) { CS.epoch = Sync.now() - (CS.pausedAt || 0) * 1000; CS.paused = false; } else { CS.pausedAt = +simTarget().toFixed(3); CS.paused = true; } publish(); }
-function restart(){ CS.epoch = Sync.now(); CS.paused = false; CS.pausedAt = 0; CS.overrides = []; CS.spawns = []; publish(); }
+function play(){ if (CS.drive === 'live') { CS.paused = !CS.paused; publish(); return; }
+  if (CS.paused) { CS.epoch = Sync.now() - (CS.pausedAt || 0) * 1000; CS.paused = false; } else { CS.pausedAt = +simTarget().toFixed(3); CS.paused = true; } publish(); }
+function restart(){ CS.epoch = Sync.now(); CS.paused = false; CS.pausedAt = 0; CS.overrides = []; CS.spawns = []; if (CS.drive === 'live') CS.preset = 'free'; publish(); }
 function choose(p){ CS.preset = p; CS.epoch = Sync.now(); CS.paused = true; CS.pausedAt = 0; CS.overrides = []; CS.spawns = []; publish(); }
-function setDrive(d){ CS.drive = d; choose(CS.preset); }
-function spawn(type){ CS.spawns = [...(CS.spawns || []), {t: +simTarget().toFixed(3), type, seed: Math.floor(Math.random() * 1e9)}]; publish(); }
-function force(n){ CS.overrides = [...(CS.overrides || []), {t: +simTarget().toFixed(3), level: n}]; publish(); }
+function setDrive(d){ CS.drive = d; if (d === 'live') { CS.preset = 'free'; CS.epoch = Sync.now(); CS.paused = false; CS.pausedAt = 0; CS.overrides = []; CS.spawns = []; publish(); } else { CS.preset = 'alongside'; choose('alongside'); } }
+function spawn(type){ CS.spawns = [...(CS.spawns || []), {t: nowT(), type, seed: Math.floor(Math.random() * 1e9)}]; publish(); }
+const nowT = () => +(CS.drive === 'live' ? (S ? S.t : 0) : simTarget()).toFixed(3);
+function force(n){ CS.overrides = [...(CS.overrides || []), {t: nowT(), level: n}]; publish(); }
 $('play').onclick = play; $('restart').onclick = restart;
 document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => choose(b.dataset.preset));
 document.querySelectorAll('[data-lv]').forEach(b => b.onclick = () => force(+b.dataset.lv));
@@ -37,18 +39,19 @@ addEventListener('keydown', e => {
   else if (e.key === 'r' || e.key === 'R') restart();
   else if ('01234'.includes(e.key) && e.key.length === 1) force(+e.key);
   else if (e.key === 'a' || e.key === 'A') force(-1);
-  else if (e.key === 'c' || e.key === 'C') spawn('cycBehindL');
-  else if (e.key === 'v' || e.key === 'V') spawn('cycBehindR');
+  else if (e.key === 'c' || e.key === 'C') spawn(CS.drive === 'live' ? 'cycBikeBehind' : 'cycBehindL');
+  else if (e.key === 'v' || e.key === 'V') spawn(CS.drive === 'live' ? 'cycSplitBehind' : 'cycBehindR');
   else if (e.key === 'p' || e.key === 'P') spawn('pedRand');
 });
 
 function refreshUI(){
   const set = (sel, attr, v) => document.querySelectorAll(sel).forEach(b => b.setAttribute('aria-pressed', String(b.dataset[attr] === String(v))));
-  set('[data-preset]', 'preset', CS.preset); set('[data-drive]', 'drive', CS.drive || 'script'); set('[data-route]', 'route', CS.route || 'L'); $('liveBox').hidden = CS.drive !== 'live'; set('[data-env]', 'env', CS.env); set('[data-enc]', 'enc', CS.enc); set('[data-lv]', 'lv', currentOverride());
+  set('[data-preset]', 'preset', CS.preset); set('[data-drive]', 'drive', CS.drive || 'script'); set('[data-route]', 'route', CS.route || 'L'); $('liveBox').hidden = CS.drive !== 'live'; $('scenarioCard').hidden = CS.drive === 'live'; document.querySelectorAll('[data-mode]').forEach(el => el.hidden = el.dataset.mode !== (CS.drive === 'live' ? 'live' : 'script')); set('[data-env]', 'env', CS.env); set('[data-enc]', 'enc', CS.enc); set('[data-lv]', 'lv', currentOverride());
   $('sndIn').setAttribute('aria-pressed', String(!!CS.sndIn)); $('sndOut').setAttribute('aria-pressed', String(!!CS.sndOut));
   $('fov').value = CS.fov || 90; $('fovV').textContent = (CS.fov || 90) + '°';
-  $('play').textContent = CS.paused ? ((CS.pausedAt || 0) > 0 ? 'Resume' : 'Start') : 'Pause';
-  $('runState').textContent = CS.paused ? ((CS.pausedAt || 0) > 0 ? 'Paused' : 'Ready') : 'Running';
+  if (CS.drive === 'live') { $('play').textContent = CS.paused ? 'Resume' : 'Pause'; }
+  else { $('play').textContent = CS.paused ? ((CS.pausedAt || 0) > 0 ? 'Resume' : 'Start') : 'Pause';
+  $('runState').textContent = CS.paused ? ((CS.pausedAt || 0) > 0 ? 'Paused' : 'Ready') : 'Running'; }
 }
 
 // ---------- screen links ----------
@@ -75,7 +78,7 @@ function drawLogicTable(){
 function drawGauges(){ if (CS.drive !== 'live') return; const L = Sync.live, ok = L && L.k === liveKey();
   const age = ok ? (performance.now() - Sync.liveAt) / 1000 : 99;
   $('liveStat').innerHTML = !ok ? 'Waiting for the windscreen computer… Open the windscreen link there and plug the wheel into it.'
-    : age > 2 ? `<span style="color:var(--warn)">Windscreen stopped sending ${Math.round(age)} s ago. Is its tab still open and in front?</span>`
+    : age > 4 ? `<span style="color:var(--warn)">Windscreen stopped sending ${Math.round(age)} s ago. Is its tab still open and in front?</span>`
     : L.inp.pad ? `Wheel: <b>${L.inp.pad}</b>${L.inp.map ? '' : ' · <span style="color:var(--warn)">not set up yet (Shift+W on the windscreen)</span>'}` : '<span style="color:var(--warn)">No wheel found on the windscreen computer.</span> Keyboard there: arrows to drive, Q / E indicators.';
   const i = ok ? L.inp : {g: 0, b: 0, w: 0, sig: ''}; const pct = v => Math.round(v * 100);
   const bar = (l, v, mid, val) => `<span>${l}</span><i><em style="${mid ? `left:${Math.min(v, .5) * 100}%;width:${Math.abs(v - .5) * 100}%` : `width:${v * 100}%`}"></em></i><b>${val}</b>`;
@@ -91,6 +94,7 @@ function frame(now){
   drawMirrorScreen($('pvL'), 'L', 320); drawClusterScreen($('pvD')); drawMirrorScreen($('pvR'), 'R', 320);
   drawTop();
   $('clock').textContent = S.t.toFixed(1) + ' s';
+  if (CS.drive === 'live') $('runState').textContent = CS.paused ? 'Paused' : (S.started ? 'Driving' : 'Waiting for the accelerator');
   if (now - lastUi > 200) { lastUi = now; const st = conceptState(); const ov = currentOverride();
     $('stateDesc').innerHTML = `<b>${st.label}</b>${ov >= 0 ? ' · forced by wizard' : ''}<br>${st.desc}`; drawLogicTable(); drawGauges(); }
   requestAnimationFrame(frame);

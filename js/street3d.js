@@ -80,6 +80,68 @@ window.SeenStreet3D = (function(){
     [0.98,-0.98].forEach(z=>add(G.mirror,bodyMat,0.62,1.05,z));
     grp.userData.bodyMat=bodyMat; return grp; }
 
+  // ---------- people: cyclist + pedestrian, forward = world +y (three -z), animated by distance travelled ----------
+  const limbG=new T.CylinderGeometry(1,1,1,8); limbG.translate(0,0.5,0);
+  function torusGeo(R,r,rs,ts){ const pos=[],nor=[],idx=[]; for(let j=0;j<=rs;j++) for(let i=0;i<=ts;i++){ const u=i/ts*Math.PI*2, v=j/rs*Math.PI*2, cx=Math.cos(u)*R, cy=Math.sin(u)*R;
+      const x=(R+r*Math.cos(v))*Math.cos(u), y=(R+r*Math.cos(v))*Math.sin(u), z=r*Math.sin(v); pos.push(x,y,z); const nx=x-cx, ny=y-cy, nz=z, l=Math.hypot(nx,ny,nz)||1; nor.push(nx/l,ny/l,nz/l); }
+    for(let j=1;j<=rs;j++) for(let i=1;i<=ts;i++){ const a=(ts+1)*j+i-1, b=(ts+1)*(j-1)+i-1, c=(ts+1)*(j-1)+i, d=(ts+1)*j+i; idx.push(a,b,d,b,c,d); }
+    const g=new T.PlaneGeometry(1,1), BA=g.getAttribute('position').constructor; g.setAttribute('position',new BA(new Float32Array(pos),3)); g.setAttribute('normal',new BA(new Float32Array(nor),3)); g.deleteAttribute('uv'); g.setIndex(idx); g.computeBoundingSphere(); return g; }
+  const ballG=new T.SphereGeometry(1,14,10), torsoG=new T.SphereGeometry(1,14,12), wheelG=torusGeo(0.34,0.022,6,28), tyreG=torusGeo(0.335,0.03,6,28);
+  const std=(c,r)=>new T.MeshStandardMaterial({color:c,roughness:r??0.8});
+  const SKIN=[0xE8BFA0,0xC99674,0x8D5B3E,0xF1D2BC,0x6B4430], SHIRT=[0x2B5D8C,0xB8442F,0xE0C340,0x3E6E47,0x7A3E7A,0xD9D9D9,0x1F1F24,0xC7703A], PANTS=[0x23262E,0x3A3F52,0x5A4A3A,0x2E3B2E,0x1A1C22], BIKE=[0x1E5BA8,0x111111,0xB3261E,0xE5E5E5,0x2F6B3A], HAIR=[0x2A1E16,0x5B3A22,0x111111,0xB8955A,0x7A7A7A];
+  const pick=(a,k)=>a[Math.floor(hash(k)*a.length)%a.length];
+  function limb(parent,mat,r){ const m=new T.Mesh(limbG,mat); m.userData.r=r; m.castShadow=true; parent.add(m); return m; }
+  const _a=new T.Vector3(), _b=new T.Vector3(), _d=new T.Vector3(), _up=new T.Vector3(0,1,0);
+  function seg(m,a,b){ _d.subVectors(b,a); const L=_d.length()||1e-3; m.position.copy(a); m.quaternion.setFromUnitVectors(_up,_d.multiplyScalar(1/L)); m.scale.set(m.userData.r,L,m.userData.r); }
+  // two-bone leg/arm: hip a, foot c, lengths l1 l2, bend direction hint n (local vector)
+  function ik(a,c,l1,l2,n){ const d=_b.subVectors(c,a); let L=d.length(); L=Math.min(L,l1+l2-1e-3); const x=(l1*l1-l2*l2+L*L)/(2*L), h=Math.sqrt(Math.max(0,l1*l1-x*x)); d.normalize();
+    const perp=n.clone().sub(d.clone().multiplyScalar(n.dot(d))).normalize(); return a.clone().add(d.multiplyScalar(x)).add(perp.multiplyScalar(h)); }
+  const V=(x,y,z)=>new T.Vector3(x,y,z);
+  function makePerson(seed,cycling){
+    const g=new T.Group(), skin=std(pick(SKIN,seed)), shirt=std(pick(SHIRT,seed*3+1)), pants=std(pick(PANTS,seed*5+2)), shoe=std(0x1b1b1f,0.6), hair=std(pick(HAIR,seed*7+3),0.9);
+    const torso=new T.Mesh(torsoG,shirt); torso.castShadow=true; g.add(torso);
+    const head=new T.Mesh(ballG,skin); head.scale.setScalar(0.105); head.castShadow=true; g.add(head);
+    const cap=new T.Mesh(new T.SphereGeometry(1,14,8,0,Math.PI*2,0,Math.PI*0.55),cycling?std(pick([0xF2F2F2,0x111111,0xE34A2E,0x2D6CDF],seed*11),0.4):hair); cap.scale.setScalar(cycling?0.128:0.112); g.add(cap);
+    const P={g,torso,head,cap,skin,shirt,pants,
+      th:[limb(g,pants,0.075),limb(g,pants,0.075)], sh:[limb(g,pants,0.06),limb(g,pants,0.06)], ft:[limb(g,shoe,0.05),limb(g,shoe,0.05)],
+      ua:[limb(g,shirt,0.05),limb(g,shirt,0.05)], fa:[limb(g,skin,0.04),limb(g,skin,0.04)]};
+    if(!cycling){ const bag=hash(seed*13)>0.6; if(bag){ const b=new T.Mesh(new T.BoxGeometry(0.28,0.36,0.14),std(pick([0x3B2F28,0x1F2B3A,0x6B2E2E],seed),0.7)); b.castShadow=true; g.add(b); P.bag=b; } }
+    return P; }
+  function posePerson(P,hip,shoulder,headC,feet,hands,kneeHint,elbowHint){
+    // torso capsule between hip and shoulder
+    const mid=hip.clone().add(shoulder).multiplyScalar(0.5); _d.subVectors(shoulder,hip); const L=_d.length();
+    P.torso.position.copy(mid); P.torso.quaternion.setFromUnitVectors(_up,_d.clone().normalize()); P.torso.scale.set(0.17,Math.max(0.01,L*0.62),0.12);
+    P.head.position.copy(headC); P.cap.position.copy(headC).add(V(0,0.012,0.005));
+    if(P.bag){ P.bag.position.copy(mid).add(V(0,0,0.15)); P.bag.quaternion.copy(P.torso.quaternion); }
+    [0,1].forEach(i=>{ const sx=i?0.1:-0.1; const h=hip.clone().add(V(sx,0,0)), f=feet[i]; const k=ik(h,f,0.46,0.46,kneeHint); seg(P.th[i],h,k); seg(P.sh[i],k,f); seg(P.ft[i],f,f.clone().add(V(0,0.0,-0.2)));
+      const sh=shoulder.clone().add(V(i?0.19:-0.19,-0.03,0)), hd=hands[i]; const e=ik(sh,hd,0.3,0.28,elbowHint); seg(P.ua[i],sh,e); seg(P.fa[i],e,hd); }); }
+  function makeCyclist(seed){
+    const g=new T.Group(), frameM=std(pick(BIKE,seed*17),0.35), dark=std(0x161618,0.5), metal=new T.MeshStandardMaterial({color:0xb9bcc2,metalness:0.8,roughness:0.3});
+    const wheels=[]; [0.53,-0.53].forEach(z=>{ const w=new T.Group(); const rim=new T.Mesh(wheelG,metal), tyre=new T.Mesh(tyreG,dark); rim.rotation.y=Math.PI/2; tyre.rotation.y=Math.PI/2; tyre.castShadow=true; w.add(rim,tyre);
+      for(let k=0;k<6;k++){ const sp=new T.Mesh(new T.BoxGeometry(0.006,0.66,0.006),metal); sp.rotation.x=k*Math.PI/6; w.add(sp); } w.position.set(0,0.35,z); g.add(w); wheels.push(w); });
+    const P=(y,z)=>V(0,y,z), rear=P(0.35,0.53), front=P(0.35,-0.53), bb=P(0.3,0.06), seat=P(0.86,0.2), head=P(0.88,-0.38), bar=P(1.02,-0.44);
+    [[rear,bb],[bb,seat],[seat,head],[bb,head],[rear,seat],[head,front]].forEach(([a,b])=>{ const m=limb(g,frameM,0.022); seg(m,a,b); });
+    const stem=limb(g,dark,0.02); seg(stem,head,bar); const hb=limb(g,dark,0.016); seg(hb,bar.clone().add(V(-0.25,0,0)),bar.clone().add(V(0.25,0,0)));
+    const saddle=new T.Mesh(new T.BoxGeometry(0.12,0.05,0.26),dark); saddle.position.copy(seat).add(V(0,0.03,0)); saddle.castShadow=true; g.add(saddle);
+    const crank=[limb(g,metal,0.012),limb(g,metal,0.012)];
+    const rider=makePerson(seed,true); g.add(rider.g);
+    const lamp=new T.Mesh(new T.BoxGeometry(0.06,0.05,0.04),new T.MeshStandardMaterial({color:0xffffff,emissive:0xfff2cc,emissiveIntensity:1})); lamp.position.copy(bar).add(V(0,-0.04,-0.04)); g.add(lamp);
+    const tail=new T.Mesh(new T.BoxGeometry(0.05,0.04,0.03),new T.MeshStandardMaterial({color:0x550000,emissive:0xff2020,emissiveIntensity:1.2})); tail.position.copy(seat).add(V(0,-0.08,0.12)); g.add(tail);
+    return {g,kind:'cyclist',wheels,crank,rider,bb,seat,bar,phase:0}; }
+  function poseCyclist(C,phase){ const a=phase; C.wheels.forEach(w=>w.rotation.x=-a*1.9);
+    const feet=[0,1].map(i=>{ const q=a+i*Math.PI; return C.bb.clone().add(V(i?0.11:-0.11,Math.cos(q)*0.17,-Math.sin(q)*0.17)); });
+    C.crank.forEach((m,i)=>seg(m,C.bb.clone().add(V(i?0.08:-0.08,0,0)),feet[i]));
+    const hip=C.seat.clone().add(V(0,0.06,0.02)), sh=V(0,1.38,-0.22), hd=V(0,1.55,-0.33);
+    posePerson(C.rider,hip,sh,hd,feet,[C.bar.clone().add(V(-0.22,0,0)),C.bar.clone().add(V(0.22,0,0))],V(0,0.3,-1),V(0,-0.4,0.6)); }
+  function makePed(seed){ const P=makePerson(seed,false); return {g:P.g,kind:'pedestrian',P,phase:0,tall:0.94+hash(seed*19)*0.12}; }
+  function posePed(W,phase,moving){ const s=moving?Math.sin(phase):0, k=W.tall, bob=moving?Math.abs(Math.cos(phase))*0.03:0;
+    const hip=V(0,0.93*k+bob,0), sh=V(0,1.43*k+bob,-0.02), hd=V(0,1.6*k+bob,-0.03);
+    const feet=[0,1].map(i=>{ const q=i?-s:s; return V(i?0.11:-0.11,0.05+Math.max(0,(i?-1:1)*Math.cos(phase))*(moving?0.07:0),-q*0.32); });
+    const hands=[0,1].map(i=>{ const q=i?s:-s; return V(i?0.24:-0.24,0.88*k+bob,-q*0.22); });
+    posePerson(W.P,hip,sh,hd,feet,hands,V(0,0,-1),V(0,0,1)); }
+  function makePerson3D(kind,seed){ return kind==='cyclist'?makeCyclist(seed):makePed(seed); }
+  function posePerson3D(M,dist,moving){ if(M.kind==='cyclist'){ M.phase=dist/0.75; poseCyclist(M,M.phase); } else { M.phase=dist/0.36; posePed(M,M.phase,moving); } }
+
   // ---------- city ----------
   function create(cfg){
     const L=cfg.layout, scene=new T.Scene();
@@ -147,7 +209,7 @@ window.SeenStreet3D = (function(){
       const sp=new T.Sprite(new T.SpriteMaterial({map:glowT,blending:T.AdditiveBlending,depthWrite:false,transparent:true})); sp.position.set(x-dir*1.05,6.05,-y); sp.scale.set(3.2,3.2,1); sp.visible=false; scene.add(sp); lampGlows.push(sp);
       const pm=new T.Mesh(new T.PlaneGeometry(7,7), new T.MeshBasicMaterial({map:poolT,fog:false,blending:T.AdditiveBlending,depthWrite:false,transparent:true})); pm.rotation.x=-Math.PI/2; pm.position.set(x-dir*1.05,0.03,-y); pm.visible=false; scene.add(pm); pools.push(pm); });
     // parked cars pool
-    const parked=[]; const PC=[0x6c6f78,0x8a2e2a,0x2f3b52,0xc9cbd0,0x3a3c40,0x4e5e48,0xb8a27a];
+    const parked=[]; const PC=[0x111215];
     function setParked(list){ while(parked.length<list.length){ const c=makeCar(PC[parked.length%PC.length]); scene.add(c); parked.push(c); }
       parked.forEach((c,i)=>{ const p=list[i]; c.visible=!!p; if(p){ c.position.set(p.x,0,-p.y); c.rotation.y=-(p.theta||0); } }); }
     // sky backgrounds + env maps
@@ -172,7 +234,7 @@ window.SeenStreet3D = (function(){
     function project(x,y,z,w,h){ const v=P(x,y,z).project(camera); return [(v.x+1)/2*w,(1-v.y)/2*h,v.z]; }
     function render(){ renderer.render(scene,camera); return renderer.domElement; }
     setFocus((rx0+rx1)/2,(y0+y1)/2); setEnv(cfg.env||'day');
-    return {T,scene,camera,renderer,setEnv,setFocus,setPinhole,setSize,render,project,setParked,makeCar,zebras,P};
+    return {T,scene,camera,renderer,setEnv,setFocus,setPinhole,setSize,render,project,setParked,makeCar,zebras,P,makePerson3D,posePerson3D};
   }
-  return {create,makeCar};
+  return {create,makeCar,makePerson3D,posePerson3D};
 })();
