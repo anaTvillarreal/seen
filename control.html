@@ -69,13 +69,14 @@ kbd{font:inherit;font-size:11px;padding:1px 5px;border:1px solid var(--line2);bo
       <div class="row"><button data-drive="script">Scripted</button><button data-drive="live">Participant drives (wheel)</button></div>
       <div id="liveBox" hidden>
         <p class="hint" id="liveStat">Waiting for the windscreen computer…</p>
+        <p class="hint">The drive starts when the participant presses the accelerator. The street starts empty so they can get used to the wheel; add road users below when they're ready. Pause and Restart work as usual.</p>
         <div class="gauges" id="gauges"></div>
         <span class="lab" style="margin-top:8px;display:block">Navigation · next turn</span>
         <div class="row" style="margin-top:6px"><button data-route="S">↑ Straight</button><button data-route="L">↰ Next left</button><button data-route="R">↱ Next right</button></div>
-        <p class="hint">The car keeps its lane. Turning the wheel near a side street commits the turn. Indicators: wheel buttons, or Q / E on the windscreen keyboard.</p>
+        <p class="hint">Endless grid of one-way avenues: passing lane · car lane · bike lane · parked cars, with a cross street every 110 m. The car keeps its lane; turning the wheel before a cross street commits the turn. Indicators: wheel buttons, or Q / E on the windscreen keyboard.</p>
       </div>
     </section>
-    <section class="card">
+    <section class="card" id="scenarioCard">
       <span class="lab">Scenario</span>
       <div class="lab" style="font-size:10px;margin-top:2px">Cyclist</div>
       <div class="row"><button data-preset="alongside">Alongside</button><button data-preset="turnNo">Left turn · no reaction</button><button data-preset="turnYes">Left turn · driver slows</button></div>
@@ -101,7 +102,9 @@ kbd{font:inherit;font-size:11px;padding:1px 5px;border:1px solid var(--line2);bo
     <section class="card">
       <span class="lab">Add road users · placed relative to the car</span>
       <div class="lab" style="font-size:10px">Cyclists</div>
-      <div class="row"><button data-spawn="cycBehindL">From behind · left <kbd>C</kbd></button><button data-spawn="cycAheadL">Slow, ahead · left</button><button data-spawn="cycBehindR">From behind · right <kbd>V</kbd></button></div>
+      <div class="row" data-mode="script"><button data-spawn="cycBehindL">From behind · left <kbd>C</kbd></button><button data-spawn="cycAheadL">Slow, ahead · left</button><button data-spawn="cycBehindR">From behind · right <kbd>V</kbd></button></div>
+      <div class="row" data-mode="live"><button data-spawn="cycBikeBehind">From behind · bike lane <kbd>C</kbd></button><button data-spawn="cycSplitBehind">From behind · between lanes <kbd>V</kbd></button></div>
+      <div class="row" data-mode="live"><button data-spawn="cycBikeAhead">Slow, ahead · bike lane</button><button data-spawn="cycSplitAhead">Slow, ahead · between lanes</button></div>
       <div class="lab" style="font-size:10px">Pedestrians</div>
       <div class="row"><button data-spawn="pedR">Crosses from right</button><button data-spawn="pedL">Crosses from left</button><button data-spawn="pedRand">Random <kbd>P</kbd></button></div>
       <div class="row"><button data-spawn="pedCornerL">At next left corner</button><button data-spawn="pedCornerR">At next right corner</button><button data-spawn="clear">Clear all</button></div>
@@ -141,6 +144,6 @@ kbd{font:inherit;font-size:11px;padding:1px 5px;border:1px solid var(--line2);bo
     </div>
   </div>
 </main>
-<script src="js/config.js?v=6"></script><script src="js/three-min.js?v=6"></script><script src="js/street3d.js?v=6"></script><script src="js/core.js?v=6"></script><script src="js/sync.js?v=6"></script><script src="js/live.js?v=6"></script><script src="js/views.js?v=6"></script>
-<script src="js/control.js?v=6"></script>
+<script src="js/config.js?v=7"></script><script src="js/three-min.js?v=7"></script><script src="js/street3d.js?v=7"></script><script src="js/core.js?v=7"></script><script src="js/sync.js?v=7"></script><script src="js/live.js?v=7"></script><script src="js/views.js?v=7"></script>
+<script src="js/control.js?v=7"></script>
 </body></html>
