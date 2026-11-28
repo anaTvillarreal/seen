@@ -142,6 +142,24 @@ window.SeenStreet3D = (function(){
   function makePerson3D(kind,seed){ return kind==='cyclist'?makeCyclist(seed):makePed(seed); }
   function posePerson3D(M,dist,moving){ if(M.kind==='cyclist'){ M.phase=dist/0.75; poseCyclist(M,M.phase); } else { M.phase=dist/0.36; posePed(M,M.phase,moving); } }
 
+  // ---------- night lighting: the participant's headlights + real light from the street lamps nearest the car ----------
+  // Lamp heads, glows and pools are cheap fakes everywhere; only the ~8 lamps closest to the car get an actual point light.
+  const glowTex=()=>radialTex('rgba(255,214,150,0.95)','rgba(255,214,150,0)');
+  function nightRig(scene,lampPos){
+    const heads=[-0.62,0.62].map(()=>{ const L=new T.SpotLight(0xfff2dc,0,80,0.24,0.6,0.9); L.castShadow=false; scene.add(L); scene.add(L.target); return L; });
+    const NL=8, pts=[], glows=[], gt=glowTex();
+    for(let i=0;i<NL;i++){ const L=new T.PointLight(0xffc77a,0,24,1.3); L.visible=false; scene.add(L); pts.push(L);
+      const sp=new T.Sprite(new T.SpriteMaterial({map:gt,blending:T.AdditiveBlending,depthWrite:false,transparent:true,fog:false})); sp.scale.set(5,5,1); sp.visible=false; scene.add(sp); glows.push(sp); }
+    let lampOn=false, headOn=false, lampK=1;
+    return { set(env){ lampOn = env==='night'||env==='rain'; headOn = lampOn; lampK = env==='night'?1:0.45; },
+      update(x,y,th){ const f=[Math.sin(th),Math.cos(th)], rt=[Math.cos(th),-Math.sin(th)];
+        heads.forEach((L,i)=>{ const o=i?0.62:-0.62; L.intensity=headOn?(lampK>0.9?50:28):0; L.visible=headOn;
+          L.position.set(x+f[0]*2.1+rt[0]*o, 0.72, -(y+f[1]*2.1+rt[1]*o)); L.target.position.set(x+f[0]*45+rt[0]*o*3, 0, -(y+f[1]*45+rt[1]*o*3)); L.target.updateMatrixWorld(); });
+        if(!lampOn){ pts.forEach(L=>L.visible=false); glows.forEach(g=>g.visible=false); return; }
+        const near=lampPos.map(p=>[p,(p[0]-x-f[0]*20)**2+(p[1]-y-f[1]*20)**2]).sort((a,b)=>a[1]-b[1]).slice(0,NL);
+        pts.forEach((L,i)=>{ const p=near[i]&&near[i][0]; L.visible=!!p; if(p){ L.position.set(p[0],5.9,-p[1]); L.intensity=lampK*55; } });
+        glows.forEach((g,i)=>{ const p=near[i]&&near[i][0]; g.visible=!!p; if(p){ g.position.set(p[0],6.0,-p[1]); g.material.opacity=lampK; } }); } }; }
+
   // ---------- city ----------
   function create(cfg){
     const L=cfg.layout, scene=new T.Scene();
@@ -202,12 +220,13 @@ window.SeenStreet3D = (function(){
     // street lamps
     const lampX=[rx0-0.55, rx1+0.55]; const poleG=new T.CylinderGeometry(0.07,0.09,6.3,8); poleG.translate(0,3.15,0); const armG=new T.BoxGeometry(1.2,0.08,0.08); const headG=new T.BoxGeometry(0.5,0.14,0.26);
     const poleM=new T.MeshStandardMaterial({color:0x2e3036,roughness:0.6,metalness:0.4}); const headM=new T.MeshStandardMaterial({color:0xd8dadf,emissive:0xffd9a0,emissiveIntensity:0});
-    const glowT=radialTex('rgba(255,214,150,0.9)','rgba(255,214,150,0)'), poolT=canvasTex(128,128,(g)=>{ const r=g.createRadialGradient(64,64,1,64,64,64); r.addColorStop(0,'rgba(255,200,130,0.42)'); r.addColorStop(0.45,'rgba(255,200,130,0.14)'); r.addColorStop(0.85,'rgba(255,200,130,0)'); r.addColorStop(1,'rgba(255,200,130,0)'); g.fillStyle=r; g.fillRect(0,0,128,128); });
-    const lamps=[]; lampX.forEach((x,i)=>{ const dir=i?1:-1; for(let y=Math.ceil(y0/18)*18+4.5;y<y1;y+=18){ if(sideDir(y,dir,2)) continue; lamps.push([x,y,dir]); } });
-    lamps.forEach(([x,y,dir])=>{ const pole=new T.Mesh(poleG,poleM); pole.position.set(x,0,-y); pole.castShadow=true; scene.add(pole);
+    const glowT=radialTex('rgba(255,214,150,0.9)','rgba(255,214,150,0)'), poolT=canvasTex(128,128,(g)=>{ const r=g.createRadialGradient(64,64,1,64,64,64); r.addColorStop(0,'rgba(255,205,140,0.6)'); r.addColorStop(0.45,'rgba(255,205,140,0.22)'); r.addColorStop(0.85,'rgba(255,200,130,0)'); r.addColorStop(1,'rgba(255,200,130,0)'); g.fillStyle=r; g.fillRect(0,0,128,128); });
+    const lamps=[], lampPos=[]; lampX.forEach((x,i)=>{ const dir=i?1:-1; for(let y=Math.ceil(y0/18)*18+4.5;y<y1;y+=18){ if(sideDir(y,dir,2)) continue; lamps.push([x,y,dir]); } });
+    lamps.forEach(([x,y,dir])=>{ lampPos.push([x-dir*1.05,y]); const pole=new T.Mesh(poleG,poleM); pole.position.set(x,0,-y); pole.castShadow=true; scene.add(pole);
       const arm=new T.Mesh(armG,poleM); arm.position.set(x-dir*0.55,6.25,-y); scene.add(arm); const head=new T.Mesh(headG,headM); head.position.set(x-dir*1.05,6.15,-y); scene.add(head);
-      const sp=new T.Sprite(new T.SpriteMaterial({map:glowT,blending:T.AdditiveBlending,depthWrite:false,transparent:true})); sp.position.set(x-dir*1.05,6.05,-y); sp.scale.set(3.2,3.2,1); sp.visible=false; scene.add(sp); lampGlows.push(sp);
-      const pm=new T.Mesh(new T.PlaneGeometry(7,7), new T.MeshBasicMaterial({map:poolT,fog:false,blending:T.AdditiveBlending,depthWrite:false,transparent:true})); pm.rotation.x=-Math.PI/2; pm.position.set(x-dir*1.05,0.03,-y); pm.visible=false; scene.add(pm); pools.push(pm); });
+      const sp=new T.Sprite(new T.SpriteMaterial({map:glowT,blending:T.AdditiveBlending,depthWrite:false,transparent:true})); sp.position.set(x-dir*1.05,6.05,-y); sp.scale.set(4.2,4.2,1); sp.visible=false; scene.add(sp); lampGlows.push(sp);
+      const pm=new T.Mesh(new T.PlaneGeometry(11,11), new T.MeshBasicMaterial({map:poolT,fog:false,blending:T.AdditiveBlending,depthWrite:false,transparent:true})); pm.rotation.x=-Math.PI/2; pm.position.set(x-dir*1.05,0.03,-y); pm.visible=false; scene.add(pm); pools.push(pm); });
+    const rig=nightRig(scene,lampPos);
     // parked cars pool
     const parked=[]; const PC=[0x111215];
     function setParked(list){ while(parked.length<list.length){ const c=makeCar(PC[parked.length%PC.length]); scene.add(c); parked.push(c); }
@@ -218,14 +237,14 @@ window.SeenStreet3D = (function(){
       return envCache[env]=pmrem.fromScene(s,0.04).texture; }
     const ENVS={
       day:{sky:['#7E9BBE','#BFD0E0','#E6E4DE'],fog:0xD2D8DE,fogN:45,fogF:260,hemi:[0xcfe0f0,0x8f8478,1.15],sun:[0xfff1dc,2.6],shadow:true,win:0,lamp:false,road:[0.92,0],exp:1.0},
-      night:{sky:['#07080F','#141726','#3A2E2C'],fog:0x15161D,fogN:25,fogF:180,hemi:[0x34406a,0x14110e,0.35],sun:[0x8fa4ff,0.18],shadow:false,win:1.8,lamp:true,road:[0.75,0.05],exp:1.1},
+      night:{sky:['#07080F','#141726','#3A2E2C'],fog:0x15161D,fogN:25,fogF:180,hemi:[0x34406a,0x16120e,0.4],sun:[0x8fa4ff,0.18],shadow:false,win:1.8,lamp:true,road:[0.75,0.05],exp:1.1},
       rain:{sky:['#59626F','#8B949F','#A3A7AB'],fog:0x8D95A0,fogN:15,fogF:140,hemi:[0xa9b4c2,0x4a4a4a,1.0],sun:[0xd8e0ea,0.35],shadow:false,win:0.5,lamp:true,road:[0.25,0.25],exp:1.0},
     };
     let curEnv=null;
     function setEnv(env){ if(env===curEnv) return; curEnv=env; const E=ENVS[env];
       scene.background=skyTex(...E.sky); scene.fog=new T.Fog(E.fog,E.fogN,E.fogF); scene.environment=envFor(env,...E.sky); scene.environmentIntensity=env==='night'?0.25:0.6;
       hemi.color.set(E.hemi[0]); hemi.groundColor.set(E.hemi[1]); hemi.intensity=E.hemi[2]; sun.color.set(E.sun[0]); sun.intensity=E.sun[1]; sun.castShadow=E.shadow;
-      facadeMats.forEach(m=>m.emissiveIntensity=E.win); headM.emissiveIntensity=E.lamp?3:0; lampGlows.forEach(s=>{ s.visible=E.lamp; s.material.opacity=env==='night'?1:0.45; }); pools.forEach(p=>{ p.visible=E.lamp; p.material.opacity=env==='night'?1:0.35; });
+      facadeMats.forEach(m=>m.emissiveIntensity=E.win); headM.emissiveIntensity=E.lamp?7:0; headMat.emissiveIntensity=E.lamp?4:0.3; rig.set(env); lampGlows.forEach(s=>{ s.visible=E.lamp; s.material.opacity=env==='night'?1:0.45; }); pools.forEach(p=>{ p.visible=E.lamp; p.material.opacity=env==='night'?1:0.35; });
       roads.forEach(r=>{ r.material.roughness=E.road[0]; r.material.metalness=E.road[1]; }); tailMat.emissiveIntensity=env==='night'?1.6:0.6; renderer.toneMappingExposure=E.exp; }
     function setFocus(x,y){ sun.position.set(x+28,40,-y+16); sun.target.position.set(x,0,-y); sun.target.updateMatrixWorld(); }
     // pinhole camera with focal length f (px) and principal point (cx,cy) for an output of w×h px
@@ -234,7 +253,7 @@ window.SeenStreet3D = (function(){
     function project(x,y,z,w,h){ const v=P(x,y,z).project(camera); return [(v.x+1)/2*w,(1-v.y)/2*h,v.z]; }
     function render(){ renderer.render(scene,camera); return renderer.domElement; }
     setFocus((rx0+rx1)/2,(y0+y1)/2); setEnv(cfg.env||'day');
-    return {T,scene,camera,renderer,setEnv,setFocus,setPinhole,setSize,render,project,setParked,makeCar,zebras,P,makePerson3D,posePerson3D};
+    return {T,scene,camera,renderer,setEnv,setFocus,setPinhole,setSize,render,project,setParked,makeCar,zebras,P,makePerson3D,posePerson3D,night:rig};
   }
 
   // ---------- finite city grid for participant driving ----------
@@ -299,10 +318,11 @@ window.SeenStreet3D = (function(){
     // lamps (glow pools only at night / rain)
     const poleG=new T.CylinderGeometry(0.07,0.09,6.3,8); poleG.translate(0,3.15,0); const armG=new T.BoxGeometry(0.08,0.08,1.2), headG=new T.BoxGeometry(0.26,0.14,0.5);
     const poleM=new T.MeshStandardMaterial({color:0x2e3036,roughness:0.6,metalness:0.4}), headM=new T.MeshStandardMaterial({color:0xd8dadf,emissive:0xffd9a0,emissiveIntensity:0});
-    const poolT=canvasTex(128,128,(g)=>{ const r=g.createRadialGradient(64,64,1,64,64,64); r.addColorStop(0,'rgba(255,200,130,0.42)'); r.addColorStop(0.45,'rgba(255,200,130,0.14)'); r.addColorStop(0.85,'rgba(255,200,130,0)'); r.addColorStop(1,'rgba(255,200,130,0)'); g.fillStyle=r; g.fillRect(0,0,128,128); });
+    const poolT=canvasTex(128,128,(g)=>{ const r=g.createRadialGradient(64,64,1,64,64,64); r.addColorStop(0,'rgba(255,205,140,0.6)'); r.addColorStop(0.45,'rgba(255,205,140,0.22)'); r.addColorStop(0.85,'rgba(255,200,130,0)'); r.addColorStop(1,'rgba(255,200,130,0)'); g.fillStyle=r; g.fillRect(0,0,128,128); });
     const poolM=new T.MeshBasicMaterial({map:poolT,fog:false,blending:T.AdditiveBlending,depthWrite:false,transparent:true});
-    function lamp(x,y,hx,hy,rot){ inst('pole',poleG,poleM,x,y,mat4(x,y,0,0,1,1,1),undefined,{cast:1});
-      inst('arm',armG,poleM,x,y,mat4((x+hx)/2,(y+hy)/2,6.25,rot,1,1,1)); inst('lhead',headG,headM,x,y,mat4(hx,hy,6.15,rot,1,1,1)); inst('pool',flat,poolM,x,y,mat4(hx,hy,0.03,0,7,1,7),undefined,{pool:1}); }
+    const lampPos=[];
+    function lamp(x,y,hx,hy,rot){ lampPos.push([hx,hy]); inst('pole',poleG,poleM,x,y,mat4(x,y,0,0,1,1,1),undefined,{cast:1});
+      inst('arm',armG,poleM,x,y,mat4((x+hx)/2,(y+hy)/2,6.25,rot,1,1,1)); inst('lhead',headG,headM,x,y,mat4(hx,hy,6.15,rot,1,1,1)); inst('pool',flat,poolM,x,y,mat4(hx,hy,0.03,0,11,1,11),undefined,{pool:1}); }
     // buildings around every block (instanced per facade variant)
     const avX=k=>[k*B-half,k*B+half], stY=k=>[k*B-half,k*B+half];
     const SW=Ln.walk, facadeMats=[], combos={}; let bi=0;
@@ -319,7 +339,7 @@ window.SeenStreet3D = (function(){
       if(i>=0) row(y0+12,y1-12,(y,w)=>bld(x0,y,-1,0,w)); if(i+1<N) row(y0+12,y1-12,(y,w)=>bld(x1,y,1,0,w)); }
     buildRoads();
     // build the instanced meshes
-    const pools=[];
+    const pools=[], rig=nightRig(scene,lampPos);
     Object.values(batches).forEach(b=>{ const m=new T.InstancedMesh(b.geo,b.mat,b.list.length); b.list.forEach((M,i)=>m.setMatrixAt(i,M)); if(b.colors.length) b.colors.forEach((c,i)=>m.setColorAt(i,c));
       m.castShadow=!!b.opts.cast; m.receiveShadow=!!b.opts.recv; m.computeBoundingSphere(); if(b.opts.pool){ m.visible=false; pools.push(m); } scene.add(m); });
     // sky + env (same looks as the scripted street)
@@ -327,14 +347,14 @@ window.SeenStreet3D = (function(){
     function envFor(env,top,mid,bot){ if(envCache[env]) return envCache[env]; const s=new T.Scene(); s.add(new T.Mesh(new T.SphereGeometry(50,32,16),new T.MeshBasicMaterial({side:T.BackSide,map:skyTex(top,mid,bot)}))); return envCache[env]=pmrem.fromScene(s,0.04).texture; }
     const ENVS={
       day:{sky:['#7E9BBE','#BFD0E0','#E6E4DE'],fog:0xD2D8DE,fogN:45,fogF:260,hemi:[0xcfe0f0,0x8f8478,1.15],sun:[0xfff1dc,2.6],shadow:true,win:0,lamp:false,road:[0.92,0],exp:1.0},
-      night:{sky:['#07080F','#141726','#3A2E2C'],fog:0x15161D,fogN:25,fogF:180,hemi:[0x34406a,0x14110e,0.35],sun:[0x8fa4ff,0.18],shadow:false,win:1.8,lamp:true,road:[0.75,0.05],exp:1.1},
+      night:{sky:['#07080F','#141726','#3A2E2C'],fog:0x15161D,fogN:25,fogF:180,hemi:[0x34406a,0x16120e,0.4],sun:[0x8fa4ff,0.18],shadow:false,win:1.8,lamp:true,road:[0.75,0.05],exp:1.1},
       rain:{sky:['#59626F','#8B949F','#A3A7AB'],fog:0x8D95A0,fogN:15,fogF:140,hemi:[0xa9b4c2,0x4a4a4a,1.0],sun:[0xd8e0ea,0.35],shadow:false,win:0.5,lamp:true,road:[0.25,0.25],exp:1.0},
     };
     let curEnv=null;
     function setEnv(env){ if(env===curEnv) return; curEnv=env; const E=ENVS[env];
       scene.background=skyTex(...E.sky); scene.fog=new T.Fog(E.fog,E.fogN,E.fogF); scene.environment=envFor(env,...E.sky); scene.environmentIntensity=env==='night'?0.25:0.6;
       hemi.color.set(E.hemi[0]); hemi.groundColor.set(E.hemi[1]); hemi.intensity=E.hemi[2]; sun.color.set(E.sun[0]); sun.intensity=E.sun[1]; sun.castShadow=E.shadow;
-      facadeMats.forEach(m=>m.emissiveIntensity=E.win); headM.emissiveIntensity=E.lamp?3:0; pools.forEach(p=>p.visible=E.lamp); poolM.opacity=env==='night'?1:0.35;
+      facadeMats.forEach(m=>m.emissiveIntensity=E.win); headM.emissiveIntensity=E.lamp?7:0; headMat.emissiveIntensity=E.lamp?4:0.3; rig.set(env); pools.forEach(p=>p.visible=E.lamp); poolM.opacity=env==='night'?1:0.35;
       roadMats.forEach(m=>{ m.roughness=E.road[0]; m.metalness=E.road[1]; }); tailMat.emissiveIntensity=env==='night'?1.6:0.6; renderer.toneMappingExposure=E.exp; }
     function setFocus(x,y){ sun.position.set(x+28,40,-y+16); sun.target.position.set(x,0,-y); sun.target.updateMatrixWorld(); }
     function setPinhole(w,h,f,cx,cy){ const fw=2*Math.max(cx,w-cx)+2, fh=2*Math.max(cy,h-cy)+2; camera.aspect=fw/fh; camera.fov=2*Math.atan(fh/2/f)*180/Math.PI; camera.setViewOffset(fw,fh,fw/2-cx,fh/2-cy,w,h); camera.updateProjectionMatrix(); }
@@ -342,7 +362,7 @@ window.SeenStreet3D = (function(){
     function project(x,y,z,w,h){ const v=new T.Vector3(x,z||0,-y).project(camera); return [(v.x+1)/2*w,(1-v.y)/2*h,v.z]; }
     function render(){ renderer.render(scene,camera); return renderer.domElement; }
     setFocus(span/2,span/2); setEnv(cfg.env||'day');
-    return {T,scene,camera,renderer,setEnv,setFocus,setPinhole,setSize,render,project,setParked:()=>{},makeCar,zebras:[],makePerson3D,posePerson3D,instCount:Object.keys(batches).length};
+    return {T,scene,camera,renderer,setEnv,setFocus,setPinhole,setSize,render,project,setParked:()=>{},makeCar,zebras:[],makePerson3D,posePerson3D,night:rig,instCount:Object.keys(batches).length};
   }
   return {create,createGrid,makeCar,makePerson3D,posePerson3D};
 })();

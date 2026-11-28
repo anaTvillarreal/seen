@@ -54,6 +54,7 @@ function update3D(){
   syncPeople(st);
   st.movers.forEach((m, i) => { const u = cars[i]; m.visible = !!u; if (u) { m.position.set(u.x, 0, -u.y); m.rotation.y = -Math.atan2(u.vx || 0, u.vy || 1); } });
   st.setFocus(c.x + Math.sin(c.theta) * 18, c.y + Math.cos(c.theta) * 18);
+  if (st.night) st.night.update(c.x, c.y, c.theta);
   st.renderer.shadowMap.autoUpdate = false; st.renderer.shadowMap.needsUpdate = true;
   return st;
 }
