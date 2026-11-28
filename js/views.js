@@ -1,21 +1,31 @@
 // Seen · one renderer per physical screen, all driven by the same simulation (core.js) and session (sync.js).
-const SESSION_DEFAULT = {preset:'alongside', epoch:0, paused:true, pausedAt:0, overrides:[], env:'day', enc:'seen', sndIn:true, sndOut:false, fov:90, rev:0};
+const SESSION_DEFAULT = {preset:'alongside', epoch:0, paused:true, pausedAt:0, overrides:[], spawns:[], drive:'script', route:'L', env:'day', enc:'seen', sndIn:true, sndOut:false, fov:90, rev:0};
+const arr = o => Array.isArray(o) ? o : (o ? Object.values(o) : []);
+const isLive = () => SESSION.drive === 'live';
 
 // ---------- session → simulation ----------
 let simKey = null;
 function applySession(st){
   SESSION = Object.assign({}, SESSION_DEFAULT, st || {});
-  const o = SESSION.overrides; SESSION.overrides = Array.isArray(o) ? o : (o ? Object.values(o) : []);
+  SESSION.overrides = arr(SESSION.overrides); SESSION.spawns = arr(SESSION.spawns);
   opts.env = SESSION.env; opts.enc = SESSION.enc;
 }
 function simTarget(){ return SESSION.paused ? (SESSION.pausedAt || 0) : Math.max(0, (Sync.now() - SESSION.epoch) / 1000); }
+// Scripted: every screen replays the same deterministic run. Live: the windscreen computer simulates with the
+// wheel inputs and broadcasts; every other screen follows that broadcast (live.js).
 function advanceSim(){
+  const live = isLive(), host = live && !!window.__seenLiveHost;
+  LIVEIN.on = host; LIVEHOST = host;
+  if (live && !host) { followLive(); return; }
+  if (host) readInputs();
   const target = simTarget();
-  const key = [SESSION.preset, SESSION.epoch, SESSION.paused, SESSION.pausedAt, JSON.stringify(SESSION.overrides), SESSION.rev].join('|');
+  const key = live ? [SESSION.preset, SESSION.epoch, SESSION.rev, 'live'].join('|')
+                   : [SESSION.preset, SESSION.epoch, SESSION.paused, SESSION.pausedAt, JSON.stringify(SESSION.overrides), JSON.stringify(SESSION.spawns), SESSION.rev].join('|');
   if (key !== simKey || !S || S.t > target + 0.05) { const changed = key !== simKey; simKey = key; opts.auto = true; load(SESSION.preset); if (changed && window.onSeenReset) window.onSeenReset(); }
   SILENT = (target - S.t) > 0.4; let n = 0;
   while (S.t + 1/120 < target && n < 4000) { step(1/60); n++; }
   SILENT = false;
+  if (host) maybePublish();
 }
 
 // ---------- 3D helpers ----------
@@ -23,7 +33,7 @@ let rSize = [0, 0];
 function update3D(){
   const st = st3(); if (!st) return null; const c = S.car;
   st.setEnv(opts.env); st.zebras.forEach(z => z.visible = (preset === 'pedYield'));
-  const list = []; if (preset !== 'carBike') for (let y = Math.floor((c.y - 20) / 6.5) * 6.5; y < c.y + 110; y += 6.5) { if (Math.abs(y - 43) < 4 && preset === 'pedYield') continue; list.push({x: 2.55, y}); }
+  const list = []; if (preset !== 'carBike') for (let y = Math.floor((c.y - 20) / 6.5) * 6.5; y < c.y + 110; y += 6.5) { if (Math.abs(y - 43) < 4 && preset === 'pedYield') continue; if (atInter(y, 1, 3)) continue; list.push({x: 2.55, y}); }
   st.setParked(list);
   const cars = S.users.filter(u => u.kind === 'car'); while (st.movers.length < cars.length) { const m = st.makeCar(0x4b4e58); st.scene.add(m); st.movers.push(m); }
   st.movers.forEach((m, i) => { const u = cars[i]; m.visible = !!u; if (u) { m.position.set(u.x, 0, -u.y); m.rotation.y = -Math.atan2(u.vx || 0, u.vy || 1); } });
@@ -61,6 +71,7 @@ function drawWindscreen(cv, maxW){
     const b = st.project(u.x, u.y, 0, w, h), tp = st.project(u.x, u.y, 1.9, w, h); if (b[2] > 1) return;
     its.push({d: rl.ry, f: () => rider(ctx, b[0], b[1], Math.abs(b[1] - tp[1]), u.kind, 1, 0, opts.env === 'night' ? '#D9D7E0' : '#24242A')}); });
   its.sort((a, b) => b.d - a.d).forEach(i => i.f());
+  if (S.car.done && window.SEEN_ROLE === 'windscreen') { ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, h * 0.4, w, h * 0.2); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = `700 ${Math.round(h * 0.06)}px ${FONT}`; ctx.fillText('End of route', w / 2, h * 0.5 + h * 0.02); ctx.textAlign = 'left'; }
   if (opts.env === 'rain') { ctx.fillStyle = 'rgba(225,235,250,.3)'; for (let i = 0; i < 140; i++) { const x = (i * 211.7) % w, y = (i * 97.3 + S.t * (25 + (i % 5) * 12) * (h / 600)) % h; ctx.beginPath(); ctx.arc(x, y, (2 + (i % 4)) * w / 1600, 0, 7); ctx.fill(); } }
 }
 
@@ -117,11 +128,18 @@ function drawMirrorScreen(cv, side, maxW){
 // ---------- display page boot ----------
 function bootDisplay(role, draw){
   const q = new URLSearchParams(location.search); const room = q.get('room') || 'booth';
-  window.SEEN_ROLE = role;
+  window.SEEN_ROLE = role; if (role === 'windscreen') window.__seenLiveHost = true;
   const badge = document.getElementById('badge'), tap = document.getElementById('tap');
+  const setup = document.getElementById('padbtn'); if (setup) setup.addEventListener('click', e => { e.stopPropagation(); startWheelSetup(); });
+  if (role === 'windscreen') addEventListener('keydown', e => { if (e.code === 'KeyW' && e.shiftKey) startWheelSetup(); });
   Sync.connect(room).then(() => Sync.presence(role));
   Sync.onState(st => { applySession(st); });
-  Sync.onStatus(m => { if (badge) { badge.textContent = `${role} · room ${room} · ${m === 'local' ? 'this computer only' : m}`; badge.dataset.mode = m; } });
+  let conn = 'connecting';
+  const setBadge = () => { if (!badge) return; let t = `${role} · room ${room} · ${conn === 'local' ? 'this computer only' : conn}`;
+    if (role === 'windscreen' && isLive()) t += PAD.name ? ` · wheel: ${PAD.name}${PAD.map ? '' : ' (not set up · Shift+W)'}` : ' · no wheel found · keyboard';
+    else if (isLive()) t += Sync.live && Sync.live.k === liveKey() ? ' · following the wheel' : ' · waiting for the windscreen';
+    badge.textContent = t; badge.dataset.mode = conn; };
+  Sync.onStatus(m => { conn = m; setBadge(); }); setInterval(setBadge, 1000);
   let audioOK = false;
   tap.addEventListener('click', async () => {
     if (role === 'dashboard') { ensureAudio(); audioOK = true; }
@@ -129,7 +147,7 @@ function bootDisplay(role, draw){
     try { if (navigator.wakeLock) await navigator.wakeLock.request('screen'); } catch (_) {}
     tap.hidden = true; setTimeout(() => badge && badge.classList.add('fade'), 4000);
   });
-  addEventListener('dblclick', () => { tap.hidden = false; badge && badge.classList.remove('fade'); });
+  addEventListener('dblclick', e => { if (e.target.closest && e.target.closest('#padsetup')) return; tap.hidden = false; badge && badge.classList.remove('fade'); });
   function frame(){ opts.sndIn = audioOK && SESSION.sndIn; opts.sndOut = audioOK && SESSION.sndOut;
     advanceSim(); draw(); requestAnimationFrame(frame); }
   applySession(null); requestAnimationFrame(frame);

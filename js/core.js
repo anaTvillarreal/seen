@@ -6,11 +6,18 @@ function wizForce(t){ const o=SESSION.overrides||[]; let v=null; for(const e of 
 const LEVELS = ['Baseline','Aware','Caution','Urgent','Failsafe'];
 const LANE = {bikeL:-3.6, bikeR:-2.1, carR:1.6, parkR:3.4, walkL:-6.5, walkR:6.5};
 const SIDE_STREET = {y0:46, y1:54};
+// Intersections along the main street (dir -1 left only, 1 right only, 0 both). The first is the scripted left turn.
+const INTERS = [{y0:46,y1:54,dir:-1},{y0:150,y1:158,dir:0},{y0:262,y1:270,dir:1},{y0:380,y1:388,dir:0},{y0:505,y1:513,dir:-1},{y0:630,y1:638,dir:0},{y0:760,y1:768,dir:1},{y0:890,y1:898,dir:0},{y0:1010,y1:1018,dir:0}];
+const atInter = (y, side, m) => INTERS.some(I => (side===0 || I.dir===0 || I.dir===side) && y > I.y0-(m||0) && y < I.y1+(m||0));
+// Live driving (participant on the wheel). The windscreen computer fills LIVEIN; LIVEHOST makes it record events for the other screens.
+window.LIVEIN = {on:false, gas:0, brake:0, wheel:0, sig:null};
+let EVQ = [], EVN = 0, LIVEHOST = false;
+function evq(o){ if(!LIVEHOST) return; o.n=++EVN; EVQ.push(o); if(EVQ.length>30) EVQ.shift(); }
 const CAR_L = 4.4, CAR_W = 1.85;
 
 // ---------- state ----------
 let S, keys = {}, opts = {enc:'seen', env:'night', sndIn:false, sndOut:false, auto:true, paused:false}, preset = 'alongside';
-function pushLog(html){ if(window.onSeenLog) window.onSeenLog(html, S?S.t:0); }
+function pushLog(html){ evq({k:'log', h:html, t:S?+S.t.toFixed(2):0}); if(window.onSeenLog) window.onSeenLog(html, S?S.t:0); }
 let SILENT=false;
 
 function freshState(){
@@ -43,12 +50,50 @@ const PRESETS = {
   explore:{ init(s){ s.car.v=0; addCyclist(s,-3.6,0); }, script(s){ return {}; } },
 };
 
-function addCyclist(s, dy, v){ s.users.push({id:'C'+s.users.length, kind:'cyclist', x:-2.85, y:s.car.y+dy, vx:0, vy:v, level:0, shown:0, levelSince:0, ledFade:0}); }
+function addCyclist(s, dy, v, x, vmax){ s.users.push({id:'C'+(s.uid=(s.uid||0)+1), kind:'cyclist', x:x===undefined?-2.85:x, y:s.car.y+dy, vx:0, vy:v, vmax:vmax||Math.max(6.6,v), level:0, shown:0, levelSince:0, ledFade:0}); }
 let forcedLevel=1;
-function addCar(s, dy, v){ s.users.push({id:'V'+s.users.length, kind:'car', x:2.55, y:s.car.y+dy, vx:0, vy:v, level:0, shown:0, levelSince:0, ledFade:0}); }
-function addPed(s, y, x, vx, state){ s.users.push({id:'P'+s.users.length, kind:'pedestrian', x, y, vx, vy:0, state:state||'walking', level:0, shown:0, levelSince:0, ledFade:0}); }
+function addCar(s, dy, v){ s.users.push({id:'V'+(s.uid=(s.uid||0)+1), kind:'car', x:2.55, y:s.car.y+dy, vx:0, vy:v, level:0, shown:0, levelSince:0, ledFade:0}); }
+function addPed(s, y, x, vx, state){ s.users.push({id:'P'+(s.uid=(s.uid||0)+1), kind:'pedestrian', x, y, vx, vy:0, state:state||'walking', level:0, shown:0, levelSince:0, ledFade:0}); }
 
-function load(name){ preset = name; S = freshState(); PRESETS[name].init(S); panelAnim={icon:0, crit:0, speedX:0.5}; }
+function load(name){ preset = name; S = freshState(); PRESETS[name].init(S); panelAnim={icon:0, crit:0, speedX:0.5}; EVQ=[]; LIVEIN.sig=null; }
+
+// ---------- wizard spawns: road users placed relative to the car ----------
+function rng(seed){ let x=(seed>>>0)||1; return ()=>{ x^=x<<13; x>>>=0; x^=x>>>17; x^=x<<5; x>>>=0; return x/4294967296; }; }
+const SPAWN_NAMES = {cycBehindL:'Cyclist from behind, left', cycAheadL:'Slow cyclist ahead, left', cycBehindR:'Cyclist from behind, right', pedR:'Pedestrian crosses from the right', pedL:'Pedestrian crosses from the left', pedRand:'Random pedestrian', pedCornerL:'Pedestrian at the next left corner', pedCornerR:'Pedestrian at the next right corner', clear:'Road users cleared'};
+function applySpawns(s){ const sp=(typeof SESSION!=='undefined'&&SESSION.spawns)||[]; s.spIx=s.spIx||0; while(s.spIx<sp.length && sp[s.spIx].t<=s.t+1e-6){ doSpawn(s, sp[s.spIx]); s.spIx++; } }
+function doSpawn(s,e){ const c=s.car, v=c.v, R=rng(e.seed||7), clamp=(a,lo,hi)=>Math.max(lo,Math.min(hi,a));
+  if(e.type==='clear'){ s.users=[]; s.failsafe=null; pushLog('Wizard: road users cleared'); return; }
+  if(Math.abs(c.theta)>0.5 || c.turn){ pushLog('Wizard: can\'t add road users once the car has turned off the main street'); return; }
+  const ahead = clamp(v*2.8+6, 12, 32);
+  switch(e.type){
+    case 'cycBehindL': addCyclist(s,-12,Math.max(6.6,v+2.2)); break;
+    case 'cycAheadL': { const vv=clamp(v*0.55,3.2,5); addCyclist(s,16,vv,-2.85,vv); break; }
+    case 'cycBehindR': addCyclist(s,-12,Math.max(6.4,v+2),1.3); break;
+    case 'pedR': addPed(s,c.y+ahead,2.6,-1.5,'walking'); break;
+    case 'pedL': addPed(s,c.y+ahead,-6.2,1.5,'walking'); break;
+    case 'pedRand': { const right=R()<0.5, run=R()<0.3, sp=run?2.6:1.1+R()*0.7, d=clamp(v*(2.0+R()*2.2)+5+R()*6,10,38); addPed(s,c.y+d,right?2.6:-6.2,right?-sp:sp,'walking'); pushLog(`Wizard: random pedestrian, ${right?'right':'left'}, ${Math.round(d)} m ahead${run?', running':''}`); return; }
+    case 'pedCornerL': case 'pedCornerR': { const sd=e.type==='pedCornerL'?-1:1; const I=INTERS.find(I=>(I.dir===0||I.dir===sd) && I.y0>c.y+8);
+      if(!I){ pushLog('Wizard: no corner ahead on that side'); return; }
+      addPed(s,I.y0-1.6,sd*5.2,0,'corner'); const u=s.users[s.users.length-1]; u.endY=I.y1+1.6; break; }
+    default: return; }
+  pushLog('Wizard: '+(SPAWN_NAMES[e.type]||e.type).toLowerCase().replace(/^./,m=>m.toUpperCase())); }
+
+// ---------- live steering: the car keeps its lane; turning the wheel near a side street commits the turn ----------
+function liveSteer(s,dt){ const c=s.car, w=LIVEIN.wheel||0, ease=k=>Math.min(1,dt*k);
+  if(c.done){ c.steer=0; return; }
+  if(!c.turn){
+    if(Math.abs(w)>0.22){ const dir=w<0?-1:1;
+      const I=INTERS.find(I=>{ if(!(I.dir===0||I.dir===dir)) return false; const laneY=(I.y0+I.y1)/2-dir*2; return laneY-c.y>=4.5 && laneY-c.y<=45; });
+      if(I){ const laneY=(I.y0+I.y1)/2-dir*2; c.turn={dir, laneY, R:Math.min(6.5,laneY-c.y), phase:'approach'}; pushLog(`Driver turns <b>${dir<0?'left':'right'}</b>${c.sig===(dir<0?'L':'R')?'':' (no indicator)'}`); } }
+    const tgt=Math.max(-0.12,Math.min(0.12,0.15*(-0.2-c.x))); c.theta+=(tgt-c.theta)*ease(3);
+    c.steer = Math.abs(w)>0.15 ? Math.max(-1,Math.min(1,w*1.6)) : 0;
+    if(c.y>1040){ c.done=true; pushLog('End of the street'); }
+    return; }
+  const T=c.turn, d=T.dir;
+  if(T.phase==='approach'){ c.theta+=(0-c.theta)*ease(3); c.steer=d*0.5; if(c.y>=T.laneY-T.R){ T.phase='arc'; } return; }
+  if(T.phase==='arc'){ c.steer=d; c.theta += d*c.v/T.R*dt; if(Math.abs(c.theta)>=Math.PI/2){ c.theta=d*Math.PI/2; T.phase='out'; T.x0=c.x; LIVEIN.sig=null; } return; }
+  c.steer=0; const e=Math.max(-0.2,Math.min(0.2,-d*0.15*(T.laneY-c.y))); c.theta+=(d*Math.PI/2+e-c.theta)*ease(3);
+  if(Math.abs(c.x-T.x0)>35){ c.done=true; pushLog('End of route'); } }
 
 // ---------- geometry ----------
 function rel(car,u){ const dx=u.x-car.x, dy=u.y-car.y, c=Math.cos(car.theta), s=Math.sin(car.theta);
@@ -99,15 +144,29 @@ function evalUser(s,u){
       }
     }
   }
+  if(LIVEIN.on && u.kind!=='car'){ const tt=predictHitLive(s.car,u,4);
+    if(tt!==null){ info.inPath=true;
+      if(!info.react){ if(tt<2.6 && info.target<3){ info.target=3; info.why=c.turn?'your turn crosses their path':'on a collision course'; } else if(tt<4 && info.target<2){ info.target=2; info.why=c.turn?'your turn crosses their path':'in your path'; } }
+      if(tt<1.0 && c.v>1) info.fail=true; } }
   return info;
 }
+// Live driving: follow the car's planned path (lane, or the committed turn) and the road user's motion; time of first overlap, or null.
+function predictHitLive(c,u,H){ if(c.v<0.5||c.done) return null; const T=c.turn, v=c.v, dt=0.1; let x=c.x,y=c.y,th=c.theta,ph=T?T.phase:null;
+  for(let tt=dt; tt<=H+1e-6; tt+=dt){
+    if(T){ if(ph==='approach' && y>=T.laneY-T.R) ph='arc'; if(ph==='arc'){ th+=T.dir*v/T.R*dt; if(Math.abs(th)>=Math.PI/2){ th=T.dir*Math.PI/2; ph='out'; } } }
+    x+=Math.sin(th)*v*dt; y+=Math.cos(th)*v*dt;
+    const px=u.x+(u.vx||0)*tt, py=u.y+(u.vy||0)*tt, dx=px-x, dy=py-y, cs=Math.cos(th), sn=Math.sin(th);
+    if(Math.abs(dx*cs-dy*sn)<CAR_W/2+0.35 && Math.abs(dx*sn+dy*cs)<CAR_L/2+0.35) return +tt.toFixed(1); }
+  return null; }
 
 // ---------- simulation step ----------
 function step(dt){
   const s=S, c=s.car; s.t+=dt;
   // inputs
+  const LIVE = LIVEIN.on;
   let inp = {sig:keys.sigToggle, steer:(keys.left?-1:0)+(keys.right?1:0), gas:!!keys.up, brake:!!keys.down};
-  if(opts.auto){ const o=PRESETS[preset].script(s)||{}; inp.sig=o.sig!==undefined?o.sig:null; inp.steer=o.steer||0; inp.gas=!!o.gas; inp.brake=!!o.brake; inp.coast=!!o.coast; inp.hold=!!o.hold; }
+  if(LIVE){ inp = {sig:LIVEIN.sig||null, steer:0, gas:LIVEIN.gas>0.08, brake:LIVEIN.brake>0.08}; }
+  else if(opts.auto){ const o=PRESETS[preset].script(s)||{}; inp.sig=o.sig!==undefined?o.sig:null; inp.steer=o.steer||0; inp.gas=!!o.gas; inp.brake=!!o.brake; inp.coast=!!o.coast; inp.hold=!!o.hold; }
   c.sig = inp.sig||null; c.steer=inp.steer; c.brake=inp.brake; c.gas=inp.gas;
   if(preset==='explore'){ const wf=wizForce(s.t); const n=(wf===null||wf===undefined)?forcedLevel:wf, cyc=s.users[0]; c.v=0; c.vHist=[0];
     s.users.forEach(u=>{ u.info=evalUser(s,u); u.info.why='level explorer'; u.level=Math.min(n,3); u.ledFade += ((n>=1?1:0)-u.ledFade)*Math.min(1,dt*5); });
@@ -115,6 +174,7 @@ function step(dt){
     if(n!==s.lastLevel){ pushLog(`Level → <b>${LEVELS[n]}</b>`); if(n===3) sound('urgent',-1); if(n===4) sound('fail'); s.lastLevel=n; }
     c.blink+=dt; return; }
 
+  applySpawns(s);
   // spawn scripted pedestrian
   if(s.spawnPed && s.t>=s.spawnPed.at){ addPed(s, c.y+s.spawnPed.ahead, 2.6, -s.spawnPed.speed, 'walking'); pushLog('Pedestrian steps out from between parked cars'); s.spawnPed=null; }
 
@@ -144,7 +204,8 @@ function step(dt){
   // longitudinal dynamics
   s.pedalPush = (c.gas && top>=2 && !s.failsafe);
   let a = 0;
-  if(s.failsafe) a = -7.5;
+  if(LIVE){ a = s.failsafe ? -7.5 : LIVEIN.gas*(s.pedalPush?0.9:3.0) - LIVEIN.brake*8 - 0.12 - 0.006*c.v*c.v; if(c.done) a=Math.min(a,-4); }
+  else if(s.failsafe) a = -7.5;
   else if(c.brake) a = (inp.hold?-2.5:-4.5);
   else if(c.gas) a = s.pedalPush ? 0.8 : 2.2;
   else if(inp.coast) a = -0.6;
@@ -152,21 +213,25 @@ function step(dt){
   c.v = Math.max(0, Math.min(14, c.v + a*dt));
   c.vHist.push(c.v); if(c.vHist.length>40) c.vHist.shift();
   // steering
+  if(LIVE){ liveSteer(s,dt); c.x += Math.sin(c.theta)*c.v*dt; c.y += Math.cos(c.theta)*c.v*dt; }
+  else {
   const rate = 0.75*Math.min(c.v/4,1);
   c.theta += c.steer*rate*dt;
   if(!c.steer && Math.abs(c.theta)<0.3) c.theta*= (1-Math.min(1,dt*1.5));
   c.x += Math.sin(c.theta)*c.v*dt; c.y += Math.cos(c.theta)*c.v*dt;
   // keep car in lane softly when straight
   if(!c.steer && Math.abs(c.theta)<0.05 && c.y< SIDE_STREET.y0-1) c.x += (-0.2-c.x)*dt*0.6;
+  }
 
   // road users
   s.users.forEach(u=>{
     if(u.kind==='pedestrian'){
       if(u.state==='waiting'){ const r=rel(c,u); if(c.v<0.4 && r.ry>0 && r.ry<14){ u.state='walking'; u.vx=-1.4; pushLog('Pedestrian starts crossing'); } }
-      if(u.x<-7){ u.vx=0; }
+      if(u.state==='corner'){ if(Math.hypot(u.x-c.x,u.y-c.y)<24){ u.state='walking'; u.vy=1.3; pushLog('Pedestrian starts crossing at the corner'); } }
+      if(u.x<-7 && u.vx<0){ u.vx=0; } if(u.x>7 && u.vx>0){ u.vx=0; } if(u.endY!==undefined && u.y>=u.endY){ u.vy=0; }
     }
     if(u.kind==='cyclist'){ // cyclist slows if car blocks them
-      const ahead=c.y-u.y; if(Math.abs(c.x-u.x)<2.1 && ahead>0 && ahead<4.8) u.vy=Math.max(0,u.vy-6*dt); else u.vy=Math.min(u.vy+1.2*dt,6.6);
+      const ahead=c.y-u.y; if(Math.abs(c.x-u.x)<2.1 && ahead>0 && ahead<4.8) u.vy=Math.max(0,u.vy-6*dt); else u.vy=Math.min(u.vy+1.2*dt,u.vmax||6.6);
     }
     u.x+=u.vx*dt; u.y+=u.vy*dt;
   });
@@ -183,7 +248,7 @@ let actx=null;
 function ensureAudio(){ if(!actx){ try{ actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ actx=null; } } if(actx&&actx.state==='suspended') actx.resume(); }
 function tone(f,dur,when,type,vol,pan){ if(!actx) return; const o=actx.createOscillator(), g=actx.createGain(); o.type=type||'sine'; o.frequency.value=f; const t0=actx.currentTime+(when||0);
   g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vol||0.12,t0+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t0+dur); let out=g; if(pan && actx.createStereoPanner){ const sp=actx.createStereoPanner(); sp.pan.value=pan; g.connect(sp); out=sp; } o.connect(g); out.connect(actx.destination); o.start(t0); o.stop(t0+dur+0.05); }
-function sound(kind,pan){ if(SILENT) return;
+function sound(kind,pan){ if(SILENT) return; evq({k:'snd', s:kind, p:pan||0, t:S?+S.t.toFixed(2):0});
   if(kind==='urgent' && opts.sndIn){ tone(1046,0.18,0,'sine',0.14,pan*0.9); tone(1318,0.22,0.16,'sine',0.14,pan*0.9); }
   if(kind==='fail' && opts.sndIn){ tone(330,0.3,0,'triangle',0.16); tone(247,0.5,0.28,'triangle',0.16); }
   if(kind==='slow' && opts.sndOut){ tone(523,0.35,0,'sine',0.12); tone(392,0.5,0.3,'sine',0.12); }
@@ -250,14 +315,15 @@ function drawTop(){
   ctx.fillStyle='#0B0B10'; ctx.fillRect(0,0,w,h);
   ctx.fillStyle='#16161D'; ctx.fillRect(X(LANE.walkL),0,(LANE.walkR-LANE.walkL)*ppm,h);
   ctx.fillStyle='#1E1E27'; ctx.fillRect(X(LANE.bikeL),0,(LANE.parkR-LANE.bikeL)*ppm,h);
-  ctx.fillRect(0,Y(SIDE_STREET.y1),Math.max(0,X(LANE.bikeL)),(SIDE_STREET.y1-SIDE_STREET.y0)*ppm);
-  ctx.fillStyle='#16161D'; ctx.fillRect(0,Y(SIDE_STREET.y1+2),Math.max(0,X(LANE.walkL)),2*ppm); ctx.fillRect(0,Y(SIDE_STREET.y0),Math.max(0,X(LANE.walkL)),2*ppm);
+  INTERS.forEach(I=>{ if(Y(I.y0)<-20||Y(I.y1)>h+20) return; ctx.fillStyle='#1E1E27';
+    if(I.dir<=0) ctx.fillRect(0,Y(I.y1),Math.max(0,X(LANE.bikeL)),(I.y1-I.y0)*ppm);
+    if(I.dir>=0) ctx.fillRect(X(LANE.parkR),Y(I.y1),Math.max(0,w-X(LANE.parkR)),(I.y1-I.y0)*ppm); });
   ctx.fillStyle='#18251F'; ctx.fillRect(X(LANE.bikeL),0,(LANE.bikeR-LANE.bikeL)*ppm,h);
   ctx.strokeStyle='rgba(255,255,255,.22)'; ctx.lineWidth=1.2; ctx.beginPath(); ctx.moveTo(X(LANE.bikeR),0); ctx.lineTo(X(LANE.bikeR),h); ctx.stroke();
   ctx.setLineDash([ppm*1.5,ppm*1.5]); ctx.lineDashOffset=-(camY*ppm)%(ppm*3); ctx.beginPath(); ctx.moveTo(X(LANE.carR),0); ctx.lineTo(X(LANE.carR),h); ctx.stroke(); ctx.setLineDash([]);
   if(preset==='pedYield'){ ctx.fillStyle='rgba(255,255,255,.28)'; for(let x=LANE.bikeL; x<LANE.parkR; x+=0.9) ctx.fillRect(X(x),Y(43.5),0.5*ppm,3*ppm); }
   for(let y=Math.floor((camY-20)/12)*12; y<camY+30; y+=12) glyph(ctx,X(-2.85),Y(y),ppm*0.32,'cyclist','rgba(255,255,255,.18)');
-  if(preset!=='carBike') for(let y=Math.floor((camY-25)/6.5)*6.5; y<camY+30; y+=6.5){ if(Math.abs(y-43)<4 && preset==='pedYield') continue; carTop(ctx,X(2.55),Y(y),0,ppm,false); }
+  if(preset!=='carBike') for(let y=Math.floor((camY-25)/6.5)*6.5; y<camY+30; y+=6.5){ if(Math.abs(y-43)<4 && preset==='pedYield') continue; if(atInter(y,1,3)) continue; carTop(ctx,X(2.55),Y(y),0,ppm,false); }
   if(opts.env==='rain'){ ctx.strokeStyle='rgba(200,215,235,.12)'; ctx.lineWidth=1; for(let i=0;i<70;i++){ const rx=(i*97.13+t*40)%w, ry=(i*53.7+t*260)%h; ctx.beginPath(); ctx.moveTo(rx,ry); ctx.lineTo(rx-2,ry+9); ctx.stroke(); } }
   if(opts.env==='day'){ ctx.fillStyle='rgba(255,255,255,.05)'; ctx.fillRect(0,0,w,h); }
   // road users
@@ -344,10 +410,17 @@ function drawPanel(){
   const blink=Math.floor(c.blink*2.4)%2===0; [['L',880],['R',1695]].forEach(([sd,x])=>{ const d=sd==='L'?-1:1, on=c.sig===sd&&blink; ctx.beginPath(); ctx.moveTo(x+d*24,172); ctx.lineTo(x-d*20,142); ctx.lineTo(x-d*20,202); ctx.closePath();
     if(on){ ctx.fillStyle='#35D07F'; ctx.shadowColor='#35D07F'; ctx.shadowBlur=18; ctx.fill(); ctx.shadowBlur=0; } else { ctx.strokeStyle='#4A4C52'; ctx.lineWidth=4; ctx.stroke(); } });
   // ---- right: navigation, or what Seen is doing ----
-  const turned=c.theta<-0.8, dist=turned?400:Math.max(0,Math.round((SIDE_STREET.y0-c.y)/10)*10);
-  ctx.strokeStyle='#F2F3F5'; ctx.lineWidth=9; ctx.lineJoin='round'; ctx.beginPath(); if(turned){ ctx.moveTo(1765,570); ctx.lineTo(1765,450); } else { ctx.moveTo(1765,570); ctx.lineTo(1765,480); ctx.lineTo(1715,480); } ctx.stroke();
-  ctx.fillStyle='#F2F3F5'; ctx.beginPath(); if(turned){ ctx.moveTo(1765,425); ctx.lineTo(1740,460); ctx.lineTo(1790,460); } else { ctx.moveTo(1690,480); ctx.lineTo(1722,455); ctx.lineTo(1722,505); } ctx.closePath(); ctx.fill();
-  ctx.textAlign='left'; ctx.font=`600 96px ${FONT}`; ctx.fillText(dist+' m',1830,512); ctx.fillStyle='#8E9096'; ctx.font=`500 36px ${MONO}`; ctx.fillText(turned?'Corso Magenta':'Via Dante',1850,560);
+  const route=(typeof SESSION!=='undefined'&&SESSION.route)||'L', offMain=Math.abs(c.theta)>0.8;
+  let nav='S', dist, street='Via Dante';
+  if(offMain){ dist=400; street=c.theta<0?'Corso Magenta':'Via Meravigli'; }
+  else if(route==='S'){ dist=Math.max(0,Math.round((1040-c.y)/10)*10); }
+  else { const sd=route==='L'?-1:1, I=INTERS.find(I=>(I.dir===0||I.dir===sd) && I.y1>c.y); nav=I?route:'S'; dist=I?Math.max(0,Math.round((I.y0-c.y)/10)*10):0; }
+  ctx.strokeStyle='#F2F3F5'; ctx.fillStyle='#F2F3F5'; ctx.lineWidth=9; ctx.lineJoin='round'; ctx.beginPath();
+  if(nav==='S'){ ctx.moveTo(1765,570); ctx.lineTo(1765,450); ctx.stroke(); ctx.beginPath(); ctx.moveTo(1765,425); ctx.lineTo(1740,460); ctx.lineTo(1790,460); }
+  else if(nav==='L'){ ctx.moveTo(1765,570); ctx.lineTo(1765,480); ctx.lineTo(1715,480); ctx.stroke(); ctx.beginPath(); ctx.moveTo(1690,480); ctx.lineTo(1722,455); ctx.lineTo(1722,505); }
+  else { ctx.moveTo(1730,570); ctx.lineTo(1730,480); ctx.lineTo(1772,480); ctx.stroke(); ctx.beginPath(); ctx.moveTo(1798,480); ctx.lineTo(1766,455); ctx.lineTo(1766,505); }
+  ctx.closePath(); ctx.fill();
+  ctx.textAlign='left'; ctx.font=`600 96px ${FONT}`; ctx.fillText(dist+' m',1830,512); ctx.fillStyle='#8E9096'; ctx.font=`500 36px ${MONO}`; ctx.fillText(street,1850,560);
   ctx.strokeStyle='#2A2C30'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(1782,782); ctx.lineTo(2142,782); ctx.stroke();
   let msg=null; if(fs) msg=['Braking', fs.u.kind==='pedestrian'?'pedestrian crossing':'cyclist alongside'];
   else if(prim && S.top>=2){ const ped=prim.kind==='pedestrian', sd=prim.info&&prim.info.r.rx<0?'left':'right'; msg = S.top>=3 ? [ped?'Brake':'Slow down', ped?'pedestrian ahead':'cyclist on your '+sd] : [ped?'Pedestrian':'Cyclist', ped?'ahead':'on your '+sd]; }
@@ -500,7 +573,7 @@ const povCv=document.getElementById('pov'); let povWheel=0;
 // ---------- 3D street (Three.js) with 2D fallback ----------
 let ST=null, ST_fail=false; const mirImg={L:document.createElement('canvas'),R:document.createElement('canvas')}; const mirCam={};
 function st3(){ if(ST||ST_fail) return ST; try{ if(!window.SeenStreet3D) throw 0;
-    ST=SeenStreet3D.create({env:opts.env, layout:{road:[LANE.bikeL,LANE.parkR], bike:[LANE.bikeL,LANE.bikeR], solid:[LANE.bikeR], dash:[LANE.carR], buildL:-10.5, buildR:10.5, y0:-60, y1:1100, sides:[{y0:SIDE_STREET.y0,y1:SIDE_STREET.y1,dir:-1,len:110}], zebra:[{y0:43.5,y1:46.5}]}});
+    ST=SeenStreet3D.create({env:opts.env, layout:{road:[LANE.bikeL,LANE.parkR], bike:[LANE.bikeL,LANE.bikeR], solid:[LANE.bikeR], dash:[LANE.carR], buildL:-10.5, buildR:10.5, y0:-60, y1:1100, sides:INTERS.map(I=>({y0:I.y0,y1:I.y1,dir:I.dir,len:110})), zebra:[{y0:43.5,y1:46.5}]}});
     ST.movers=[]; ['L','R'].forEach(k=>{ mirImg[k].width=300; mirImg[k].height=250; mirCam[k]=new ST.T.PerspectiveCamera(30,300/250,0.3,300); });
   }catch(e){ ST=null; ST_fail=true; } return ST; }
 function carPose(c,lx,ly){ const sn=Math.sin(c.theta), cs=Math.cos(c.theta); return [c.x+lx*cs+ly*sn, c.y-lx*sn+ly*cs]; }

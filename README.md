@@ -43,3 +43,22 @@ Without Firebase (`js/config.js` left as `null`) the pages sync only between tab
 5. Double-tap a screen to see its status badge again.
 
 Tips: plug the iPads in, turn off auto-lock, and use Guided Access so the browser bar can't be swiped open.
+
+## Participant driving (USB wheel + pedals)
+
+1. Plug the wheel and pedals into the **windscreen computer** (the one driving the big monitor). Use Chrome or Edge.
+2. Open the windscreen link, press a pedal once so the browser sees the wheel, then click **Set up wheel + pedals** (or press Shift+W). Follow the five steps. The setup is saved in that browser, so you only do it once per computer.
+3. In the wizard console, choose **Driving → Participant drives (wheel)**, pick a scenario and press Start.
+
+How it works:
+- The windscreen computer runs the simulation with the real pedal and wheel inputs and broadcasts the car about 15 times a second. The cluster, mirrors and wizard follow that broadcast. Keep the windscreen tab open and in front, or everything stops.
+- The car keeps its lane by itself. Turning the wheel near a side street commits a left or right turn; the car follows the turn while the pedals still control speed. The indicators are the wheel buttons you chose in setup (keyboard: Q / E).
+- **Navigation · next turn** sets the arrow on the cluster, so you can ask the participant to "follow the navigation" without telling them about the cyclist.
+- Each run ends on its own ("End of route") about 35 m after the turn, or at the end of the street.
+- No wheel? On the windscreen computer: arrow keys drive, Q / E indicate.
+- The wheel's force feedback and the pedal "push back" can't be driven from a browser; Seen's pedal cue is simulated by weakening the accelerator.
+
+## Adding road users during a run
+
+The **Add road users** buttons place cyclists and pedestrians relative to the car, so they work in both scripted and participant runs:
+cyclist from behind on the left (C), slow cyclist ahead on the left, cyclist from behind on the right (V), pedestrian crossing from the right / left, random pedestrian (P), and a pedestrian at the next left / right corner, who starts crossing the side street when the car is about 24 m away.
