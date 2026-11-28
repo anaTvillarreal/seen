@@ -9,24 +9,31 @@ const KB = {};
 addEventListener('keydown', e => { KB[e.code] = true; if (window.__seenLiveHost && !e.repeat) { if (e.code === 'KeyQ' || e.code === 'Comma') toggleSig('L'); if (e.code === 'KeyE' || e.code === 'Period') toggleSig('R'); } });
 addEventListener('keyup', e => { KB[e.code] = false; });
 function toggleSig(sd){ LIVEIN.sig = LIVEIN.sig === sd ? null : sd; }
-function getPad(){
-  const ps = navigator.getGamepads ? [...navigator.getGamepads()].filter(p => p && p.connected) : [];
+// Controls can be an axis or an analog button (PS4-style wheels report the pedals as L2/R2 triggers),
+// and can live on a different device than the wheel (some pedal sets enumerate separately).
+function pads(){ return navigator.getGamepads ? [...navigator.getGamepads()].filter(p => p && p.connected) : []; }
+function getPad(id){ const ps = pads(); if (id) { const m = ps.find(p => p.id === id); if (m) return m; }
   if (PAD.map && PAD.map.id) { const m = ps.find(p => p.id === PAD.map.id); if (m) return m; }
-  return ps.find(p => p.axes.length >= 3) || ps[0] || null;
-}
+  return ps.find(p => p.axes.length >= 2) || ps[0] || null; }
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-function pedal(p, m){ if (!m) return 0; const v = p.axes[m.i] ?? m.rest; const span = m.full - m.rest; if (Math.abs(span) < 0.05) return 0; const x = clamp((v - m.rest) / span, 0, 1); return x < 0.04 ? 0 : x; }
+function rawVal(m){ const p = getPad(m.id); if (!p) return null; if (m.src === 'b') { const b = p.buttons[m.i]; return b ? b.value : null; } return p.axes[m.i] ?? null; }
+function pedal(m){ if (!m) return 0; const v = rawVal(m); if (v === null) return 0; const span = m.full - m.rest; if (Math.abs(span) < 0.05) return 0; const x = clamp((v - m.rest) / span, 0, 1); return x < 0.04 ? 0 : x; }
 function readInputs(){
   const p = getPad(); let g = 0, b = 0, w = 0; PAD.name = p ? p.id.replace(/\s*\(.*$/, '').slice(0, 40) : '';
-  if (p && PAD.map) { const m = PAD.map;
-    if (m.steer) { w = clamp(((p.axes[m.steer.i] ?? m.steer.c) - m.steer.c) / (m.steer.h || 1), -1, 1); if (Math.abs(w) < 0.03) w = 0; }
-    g = pedal(p, m.gas); b = pedal(p, m.brake);
-    ['sigL', 'sigR'].forEach(k => { const i = m[k]; if (i === undefined || i === null || !p.buttons[i]) return; const on = p.buttons[i].pressed; if (on && !PAD.prevBtn[k]) toggleSig(k === 'sigL' ? 'L' : 'R'); PAD.prevBtn[k] = on; });
+  if (PAD.map) { const m = PAD.map;
+    if (m.steer) { const v = rawVal(m.steer); if (v !== null) { w = clamp((v - m.steer.c) / (m.steer.h || 1), -1, 1); if (Math.abs(w) < 0.03) w = 0; } }
+    g = pedal(m.gas); b = pedal(m.brake);
+    ['sigL', 'sigR'].forEach(k => { const c = m[k]; if (c === undefined || c === null) return; const q = typeof c === 'object' ? getPad(c.id) : p, i = typeof c === 'object' ? c.i : c;
+      if (!q || !q.buttons[i]) return; const on = q.buttons[i].pressed; if (on && !PAD.prevBtn[k]) toggleSig(k === 'sigL' ? 'L' : 'R'); PAD.prevBtn[k] = on; });
   }
   if (KB.ArrowUp) g = Math.max(g, 0.7); if (KB.ArrowDown) b = Math.max(b, 0.8);
   if (KB.ArrowLeft) w = -0.6; if (KB.ArrowRight) w = 0.6;
   LIVEIN.gas = g; LIVEIN.brake = b; LIVEIN.wheel = w;
 }
+// every analog input on every connected device: [{key, id, src, i, v, label}]
+function allInputs(){ const out = []; pads().forEach((p, pi) => {
+  p.axes.forEach((v, i) => out.push({key: `${p.id}|a|${i}`, id: p.id, src: 'a', i, v, label: `${pads().length > 1 ? 'Device ' + (pi + 1) + ' · ' : ''}Axis ${i}`}));
+  p.buttons.forEach((b, i) => out.push({key: `${p.id}|b|${i}`, id: p.id, src: 'b', i, v: b.value, label: `${pads().length > 1 ? 'Device ' + (pi + 1) + ' · ' : ''}Button ${i}${p.mapping === 'standard' && i === 6 ? ' (L2)' : p.mapping === 'standard' && i === 7 ? ' (R2)' : ''}`})); }); return out; }
 
 // ---------- wheel setup (runs once per windscreen computer; saved in that browser) ----------
 function startWheelSetup(){
@@ -39,14 +46,19 @@ function startWheelSetup(){
     {k: 'sigL', t: 'Left indicator', d: 'Press the button or paddle the driver will use for the LEFT indicator.', btn: true},
     {k: 'sigR', t: 'Right indicator', d: 'Press the button or paddle for the RIGHT indicator.', btn: true},
   ];
-  const map = {}; let ix = 0, lo = [], hi = [], startBtns = [], raf = 0, alive = true;
+  const map = {}; let ix = 0, lo = {}, hi = {}, startBtns = {}, raf = 0, alive = true;
   const stop = () => { alive = false; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); };
-  const begin = i => { ix = i; if (ix >= steps.length) { finish(); return; } const p = getPad(); lo = p ? [...p.axes] : []; hi = [...lo]; startBtns = p ? p.buttons.map(b => b.pressed) : []; render(); };
-  const commitAxis = () => { const p = getPad(), st = steps[ix];
-    if (p) { let best = -1, r = 0.15;
-      lo.forEach((l, i) => { if (st.k !== 'steer' && map.steer && i === map.steer.i) return; if (hi[i] - l > r) { r = hi[i] - l; best = i; } });
-      if (best >= 0) { if (st.k === 'steer') map.steer = {i: best, c: (lo[best] + hi[best]) / 2, h: (hi[best] - lo[best]) / 2};
-        else { const rest = p.axes[best]; map[st.k] = {i: best, rest, full: Math.abs(hi[best] - rest) > Math.abs(lo[best] - rest) ? hi[best] : lo[best]}; } } }
+  const snapBtns = () => { const o = {}; pads().forEach(p => p.buttons.forEach((b, i) => o[p.id + '|' + i] = b.pressed)); return o; };
+  const begin = i => { ix = i; if (ix >= steps.length) { finish(); return; } lo = {}; hi = {}; allInputs().forEach(c => { lo[c.key] = hi[c.key] = c.v; }); startBtns = snapBtns(); render(); };
+  const usedKey = m => m ? `${m.id}|${m.src}|${m.i}` : '';
+  const commitAxis = () => { const st = steps[ix], now = {}; allInputs().forEach(c => now[c.key] = c);
+    let best = null, r = 0.15;
+    Object.keys(lo).forEach(k => { const c = now[k]; if (!c) return; if (st.k === 'steer' && c.src === 'b') return; if (st.k !== 'steer' && k === usedKey(map.steer)) return;
+      const range = hi[k] - lo[k]; if (range > r) { r = range; best = c; } });
+    if (best) { const k = best.key, base = {id: best.id, src: best.src, i: best.i};
+      if (st.k === 'steer') map.steer = Object.assign(base, {c: (lo[k] + hi[k]) / 2, h: (hi[k] - lo[k]) / 2});
+      else { const rest = best.v; map[st.k] = Object.assign(base, {rest, full: Math.abs(hi[k] - rest) > Math.abs(lo[k] - rest) ? hi[k] : lo[k]}); } }
+    else { const w = box.querySelector('#pslive'); if (w) { w.insertAdjacentHTML('afterbegin', '<p class="warn">Nothing moved enough. Press it all the way, then Next.</p>'); } return; }
     begin(ix + 1); };
   const bar = (l, v, mid) => `<div class="pb"><span>${l}</span><i><em style="${mid ? `left:${Math.min(v, .5) * 100}%;width:${Math.abs(v - .5) * 100}%` : `width:${v * 100}%`}"></em></i></div>`;
   const render = () => { const st = steps[ix];
@@ -54,7 +66,7 @@ function startWheelSetup(){
     box.querySelector('#pscancel').onclick = () => { stop(); box.remove(); };
     box.querySelector('#psskip').onclick = () => begin(ix + 1);
     const nx = box.querySelector('#psnext'); if (nx) nx.onclick = commitAxis; };
-  const finish = () => { const p = getPad(); map.id = p ? p.id : ''; PAD.map = map; try { localStorage.setItem('seen-pad-map', JSON.stringify(map)); } catch (_) {}
+  const finish = () => { const p = getPad(map.steer && map.steer.id); map.id = p ? p.id : ''; PAD.map = map; try { localStorage.setItem('seen-pad-map', JSON.stringify(map)); } catch (_) {}
     box.innerHTML = `<div class="ps"><b>Wheel ready</b><p>Check that each bar moves the right way. If one doesn't, run the setup again.</p><div id="psbars"></div><div class="row"><button id="psagain">Set up again</button><button id="psdone" class="pri">Done</button></div></div>`;
     box.querySelector('#psagain').onclick = () => { stop(); startWheelSetup(); }; box.querySelector('#psdone').onclick = () => { stop(); box.remove(); }; };
   const watch = () => { if (!alive) return;
@@ -62,9 +74,12 @@ function startWheelSetup(){
     if (bars) { readInputs(); bars.innerHTML = bar('Steering', (LIVEIN.wheel + 1) / 2, true) + bar('Accelerator', LIVEIN.gas) + bar('Brake', LIVEIN.brake) + `<p>Indicator: <b>${LIVEIN.sig === 'L' ? '← left' : LIVEIN.sig === 'R' ? 'right →' : 'off'}</b></p>`; }
     else if (el) {
       if (!p) el.innerHTML = '<p class="warn">No wheel found. Plug it in, then press a pedal or button so the browser sees it.</p>';
-      else if (!st.btn) { p.axes.forEach((v, i) => { lo[i] = Math.min(lo[i] ?? v, v); hi[i] = Math.max(hi[i] ?? v, v); });
-        el.innerHTML = `<p class="dim">${p.id}</p>` + p.axes.map((v, i) => `<div class="pb"><span>Axis ${i}</span><i><em style="left:${(Math.min(v, 0) + 1) / 2 * 100}%;width:${Math.abs(v) / 2 * 100}%"></em></i></div>`).join(''); }
-      else { el.innerHTML = '<p class="dim">Waiting for a button…</p>'; const i = p.buttons.findIndex((b, k) => b.pressed && !startBtns[k]); if (i >= 0) { map[st.k] = i; PAD.prevBtn[st.k] = true; begin(ix + 1); } }
+      else if (!st.btn) { const all = allInputs(); all.forEach(c => { lo[c.key] = Math.min(lo[c.key] ?? c.v, c.v); hi[c.key] = Math.max(hi[c.key] ?? c.v, c.v); });
+        const show = all.filter(c => c.src === 'a' || (hi[c.key] - lo[c.key]) > 0.05 || c.v > 0.05);
+        el.innerHTML = `<p class="dim">${pads().map(p => p.id + (p.mapping ? ' · ' + p.mapping : '')).join('<br>')}</p>` + show.map(c => `<div class="pb"><span>${c.label}</span><i><em style="${c.src === 'b' ? `left:0;width:${c.v * 100}%` : `left:${(Math.min(c.v, 0) + 1) / 2 * 100}%;width:${Math.abs(c.v) / 2 * 100}%`}"></em></i></div>`).join(''); }
+      else { el.innerHTML = '<p class="dim">Waiting for a button…</p>'; const pedalKeys = [map.gas, map.brake].filter(m => m && m.src === 'b').map(m => m.id + '|' + m.i);
+        let hit = null; pads().forEach(q => q.buttons.forEach((bb, i) => { const k = q.id + '|' + i; if (!hit && bb.pressed && !startBtns[k] && !pedalKeys.includes(k)) hit = {id: q.id, i}; }));
+        if (hit) { map[st.k] = hit; PAD.prevBtn[st.k] = true; begin(ix + 1); } }
     }
     raf = requestAnimationFrame(watch); };
   const onKey = e => { if (e.code === 'Enter' && steps[ix] && !steps[ix].btn && box.querySelector('#psnext')) commitAxis(); if (e.code === 'Escape') { stop(); box.remove(); } };
