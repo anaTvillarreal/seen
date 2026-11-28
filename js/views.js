@@ -136,7 +136,7 @@ function bootDisplay(role, draw){
   Sync.onState(st => { applySession(st); });
   let conn = 'connecting';
   const setBadge = () => { if (!badge) return; let t = `${role} · room ${room} · ${conn === 'local' ? 'this computer only' : conn}`;
-    if (role === 'windscreen' && isLive()) t += PAD.name ? ` · wheel: ${PAD.name}${PAD.map ? '' : ' (not set up · Shift+W)'}` : ' · no wheel found · keyboard';
+    if (role === 'windscreen' && isLive()) t += PAD.name ? ` · wheel: ${PAD.name}${!PAD.map ? ' (not set up · Shift+W)' : PAD.old ? ' (run the setup again · Shift+W)' : ''}` : ' · no wheel found · keyboard';
     else if (isLive()) t += Sync.live && Sync.live.k === liveKey() ? ' · following the wheel' : ' · waiting for the windscreen';
     badge.textContent = t; badge.dataset.mode = conn; };
   Sync.onStatus(m => { conn = m; setBadge(); }); setInterval(setBadge, 1000);

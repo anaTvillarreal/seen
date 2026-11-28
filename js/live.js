@@ -3,7 +3,7 @@
 // ~15 times a second. Every other screen (cluster, mirrors, wizard) shows that broadcast, smoothed between updates.
 
 // ---------- wheel + pedals (Gamepad API) ----------
-const PAD = { name: '', map: null, prevBtn: {} };
+const PAD = { name: '', map: null, prevBtn: {}, analog: {} };
 try { PAD.map = JSON.parse(localStorage.getItem('seen-pad-map') || 'null'); } catch (_) {}
 const KB = {};
 addEventListener('keydown', e => { KB[e.code] = true; if (window.__seenLiveHost && !e.repeat) { if (e.code === 'KeyQ' || e.code === 'Comma') toggleSig('L'); if (e.code === 'KeyE' || e.code === 'Period') toggleSig('R'); } });
@@ -19,12 +19,15 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function rawVal(m){ const p = getPad(m.id); if (!p) return null; if (m.src === 'b') { const b = p.buttons[m.i]; return b ? b.value : null; } return p.axes[m.i] ?? null; }
 function pedal(m){ if (!m) return 0; const v = rawVal(m); if (v === null) return 0; const span = m.full - m.rest; if (Math.abs(span) < 0.05) return 0; const x = clamp((v - m.rest) / span, 0, 1); return x < 0.04 ? 0 : x; }
 function readInputs(){
-  const p = getPad(); let g = 0, b = 0, w = 0; PAD.name = p ? p.id.replace(/\s*\(.*$/, '').slice(0, 40) : '';
+  const p = getPad(); let g = 0, b = 0, w = 0; PAD.name = p ? p.id.replace(/\s*\(.*$/, '').slice(0, 40) : ''; PAD.old = !!(PAD.map && PAD.map.v !== 2);
   if (PAD.map) { const m = PAD.map;
     if (m.steer) { const v = rawVal(m.steer); if (v !== null) { w = clamp((v - m.steer.c) / (m.steer.h || 1), -1, 1); if (Math.abs(w) < 0.03) w = 0; } }
     g = pedal(m.gas); b = pedal(m.brake);
     ['sigL', 'sigR'].forEach(k => { const c = m[k]; if (c === undefined || c === null) return; const q = typeof c === 'object' ? getPad(c.id) : p, i = typeof c === 'object' ? c.i : c;
-      if (!q || !q.buttons[i]) return; const on = q.buttons[i].pressed; if (on && !PAD.prevBtn[k]) toggleSig(k === 'sigL' ? 'L' : 'R'); PAD.prevBtn[k] = on; });
+      if (!q || !q.buttons[i]) return; const key = q.id + '|' + i, bv = q.buttons[i].value;
+      if (bv > 0.02 && bv < 0.98) PAD.analog[key] = true;
+      if (PAD.analog[key] || (m.noSig || []).includes(key) || [m.gas, m.brake].some(x => x && x.src === 'b' && x.i === i && (x.id || q.id) === q.id)) return;
+      const on = q.buttons[i].pressed; if (on && !PAD.prevBtn[k]) toggleSig(k === 'sigL' ? 'L' : 'R'); PAD.prevBtn[k] = on; });
   }
   if (KB.ArrowUp) g = Math.max(g, 0.7); if (KB.ArrowDown) b = Math.max(b, 0.8);
   if (KB.ArrowLeft) w = -0.6; if (KB.ArrowRight) w = 0.6;
@@ -40,23 +43,23 @@ function startWheelSetup(){
   let box = document.getElementById('padsetup'); if (box) box.remove();
   box = document.createElement('div'); box.id = 'padsetup'; document.body.appendChild(box);
   const steps = [
-    {k: 'steer', t: 'Steering', d: 'Turn the wheel all the way left, all the way right, then back to the centre. Then click Next (or press Enter).'},
+    {k: 'steer', t: 'Steering', d: 'Turn the wheel all the way LEFT first, then all the way right, then back to the centre. Then click Next (or press Enter).'},
     {k: 'gas', t: 'Accelerator', d: 'Press the accelerator all the way down, let it go, then click Next.'},
     {k: 'brake', t: 'Brake', d: 'Press the brake all the way down, let it go, then click Next.'},
-    {k: 'sigL', t: 'Left indicator', d: 'Press the button or paddle the driver will use for the LEFT indicator.', btn: true},
+    {k: 'sigL', t: 'Left indicator', d: 'Feet off the pedals. Press the button or paddle the driver will use for the LEFT indicator.', btn: true},
     {k: 'sigR', t: 'Right indicator', d: 'Press the button or paddle for the RIGHT indicator.', btn: true},
   ];
-  const map = {}; let ix = 0, lo = {}, hi = {}, startBtns = {}, raf = 0, alive = true;
+  const map = {}; let ix = 0, lo = {}, hi = {}, first = {}, firstDir = {}, startBtns = {}, axisBtns = new Set(), raf = 0, alive = true;
   const stop = () => { alive = false; cancelAnimationFrame(raf); removeEventListener('keydown', onKey); };
   const snapBtns = () => { const o = {}; pads().forEach(p => p.buttons.forEach((b, i) => o[p.id + '|' + i] = b.pressed)); return o; };
-  const begin = i => { ix = i; if (ix >= steps.length) { finish(); return; } lo = {}; hi = {}; allInputs().forEach(c => { lo[c.key] = hi[c.key] = c.v; }); startBtns = snapBtns(); render(); };
+  const begin = i => { ix = i; firstDir = {}; if (ix >= steps.length) { finish(); return; } lo = {}; hi = {}; first = {}; allInputs().forEach(c => { lo[c.key] = hi[c.key] = c.v; first[c.key] = c.v; }); startBtns = snapBtns(); render(); };
   const usedKey = m => m ? `${m.id}|${m.src}|${m.i}` : '';
   const commitAxis = () => { const st = steps[ix], now = {}; allInputs().forEach(c => now[c.key] = c);
     let best = null, r = 0.15;
     Object.keys(lo).forEach(k => { const c = now[k]; if (!c) return; if (st.k === 'steer' && c.src === 'b') return; if (st.k !== 'steer' && k === usedKey(map.steer)) return;
       const range = hi[k] - lo[k]; if (range > r) { r = range; best = c; } });
     if (best) { const k = best.key, base = {id: best.id, src: best.src, i: best.i};
-      if (st.k === 'steer') map.steer = Object.assign(base, {c: (lo[k] + hi[k]) / 2, h: (hi[k] - lo[k]) / 2});
+      if (st.k === 'steer') map.steer = Object.assign(base, {c: (lo[k] + hi[k]) / 2, h: (hi[k] - lo[k]) / 2 * (firstDir[k] > 0 ? -1 : 1)});
       else { const rest = best.v; map[st.k] = Object.assign(base, {rest, full: Math.abs(hi[k] - rest) > Math.abs(lo[k] - rest) ? hi[k] : lo[k]}); } }
     else { const w = box.querySelector('#pslive'); if (w) { w.insertAdjacentHTML('afterbegin', '<p class="warn">Nothing moved enough. Press it all the way, then Next.</p>'); } return; }
     begin(ix + 1); };
@@ -66,7 +69,7 @@ function startWheelSetup(){
     box.querySelector('#pscancel').onclick = () => { stop(); box.remove(); };
     box.querySelector('#psskip').onclick = () => begin(ix + 1);
     const nx = box.querySelector('#psnext'); if (nx) nx.onclick = commitAxis; };
-  const finish = () => { const p = getPad(map.steer && map.steer.id); map.id = p ? p.id : ''; PAD.map = map; try { localStorage.setItem('seen-pad-map', JSON.stringify(map)); } catch (_) {}
+  const finish = () => { const p = getPad(map.steer && map.steer.id); map.id = p ? p.id : ''; map.v = 2; map.noSig = [...axisBtns]; PAD.map = map; try { localStorage.setItem('seen-pad-map', JSON.stringify(map)); } catch (_) {}
     box.innerHTML = `<div class="ps"><b>Wheel ready</b><p>Check that each bar moves the right way. If one doesn't, run the setup again.</p><div id="psbars"></div><div class="row"><button id="psagain">Set up again</button><button id="psdone" class="pri">Done</button></div></div>`;
     box.querySelector('#psagain').onclick = () => { stop(); startWheelSetup(); }; box.querySelector('#psdone').onclick = () => { stop(); box.remove(); }; };
   const watch = () => { if (!alive) return;
@@ -74,12 +77,12 @@ function startWheelSetup(){
     if (bars) { readInputs(); bars.innerHTML = bar('Steering', (LIVEIN.wheel + 1) / 2, true) + bar('Accelerator', LIVEIN.gas) + bar('Brake', LIVEIN.brake) + `<p>Indicator: <b>${LIVEIN.sig === 'L' ? '← left' : LIVEIN.sig === 'R' ? 'right →' : 'off'}</b></p>`; }
     else if (el) {
       if (!p) el.innerHTML = '<p class="warn">No wheel found. Plug it in, then press a pedal or button so the browser sees it.</p>';
-      else if (!st.btn) { const all = allInputs(); all.forEach(c => { lo[c.key] = Math.min(lo[c.key] ?? c.v, c.v); hi[c.key] = Math.max(hi[c.key] ?? c.v, c.v); });
+      else if (!st.btn) { const all = allInputs(); pads().forEach(q => q.buttons.forEach((bb, i) => { if (bb.pressed || bb.value > 0.1) axisBtns.add(q.id + '|' + i); })); all.forEach(c => { lo[c.key] = Math.min(lo[c.key] ?? c.v, c.v); hi[c.key] = Math.max(hi[c.key] ?? c.v, c.v); if (!firstDir[c.key] && Math.abs(c.v - first[c.key]) > 0.4) firstDir[c.key] = Math.sign(c.v - first[c.key]); });
         const show = all.filter(c => c.src === 'a' || (hi[c.key] - lo[c.key]) > 0.05 || c.v > 0.05);
         el.innerHTML = `<p class="dim">${pads().map(p => p.id + (p.mapping ? ' · ' + p.mapping : '')).join('<br>')}</p>` + show.map(c => `<div class="pb"><span>${c.label}</span><i><em style="${c.src === 'b' ? `left:0;width:${c.v * 100}%` : `left:${(Math.min(c.v, 0) + 1) / 2 * 100}%;width:${Math.abs(c.v) / 2 * 100}%`}"></em></i></div>`).join(''); }
-      else { el.innerHTML = '<p class="dim">Waiting for a button…</p>'; const pedalKeys = [map.gas, map.brake].filter(m => m && m.src === 'b').map(m => m.id + '|' + m.i);
+      else { el.innerHTML = '<p class="dim">Waiting for a button…</p>'; const pedalKeys = [...axisBtns, ...[map.gas, map.brake].filter(m => m && m.src === 'b').map(m => m.id + '|' + m.i)];
         let hit = null; pads().forEach(q => q.buttons.forEach((bb, i) => { const k = q.id + '|' + i; if (!hit && bb.pressed && !startBtns[k] && !pedalKeys.includes(k)) hit = {id: q.id, i}; }));
-        if (hit) { map[st.k] = hit; PAD.prevBtn[st.k] = true; begin(ix + 1); } }
+        if (hit && hit.i !== (map.sigL && map.sigL.i) ) { map[st.k] = hit; PAD.prevBtn[st.k] = true; begin(ix + 1); } }
     }
     raf = requestAnimationFrame(watch); };
   const onKey = e => { if (e.code === 'Enter' && steps[ix] && !steps[ix].btn && box.querySelector('#psnext')) commitAxis(); if (e.code === 'Escape') { stop(); box.remove(); } };
@@ -98,7 +101,7 @@ function packLive(){
     u: S.users.map(u => { const i = u.info || {}; return [u.id, u.kind, r3(u.x), r3(u.y), r3(u.vx), r3(u.vy), u.state || '', u.level || 0, r3(u.levelSince), r3(u.ledFade), i.inPath ? 1 : 0, i.react ? 1 : 0, i.why || '', i.bsd ? 1 : 0]; }),
     fs: S.failsafe ? [S.failsafe.u.id, r3(S.failsafe.t)] : 0, p: S.primary ? S.primary.id : '', top: S.top || 0, pp: S.pedalPush ? 1 : 0, ls: r3(S.lastSlowSound), ll: S.lastLevel || 0,
     ev: EVQ.slice(-12).map(e => ({n: e.n, k: e.k, h: e.h || '', s: e.s || '', p: e.p || 0, t: e.t || 0})),
-    inp: {g: r3(LIVEIN.gas), b: r3(LIVEIN.brake), w: r3(LIVEIN.wheel), sig: LIVEIN.sig || '', pad: PAD.name || '', map: PAD.map ? 1 : 0}};
+    inp: {g: r3(LIVEIN.gas), b: r3(LIVEIN.brake), w: r3(LIVEIN.wheel), sig: LIVEIN.sig || '', pad: PAD.name || '', map: PAD.map && !PAD.old ? 1 : 0}};
 }
 function maybePublish(force){ const now = performance.now(); if (!force && now - lastPub < 66) return; lastPub = now; try { Sync.publishLive(packLive()); } catch (e) { console.warn(e); } }
 
